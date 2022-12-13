@@ -1,0 +1,137 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+node         draw(uint id, rtv rt : SV_Target0);
+compute node comp_draw(uint id, uav rt);
+node         blt(uint id, rtv dst : SV_Target0, ps_srv src);
+node         blt_all(uint id, rtv dst : SV_Target0, ps_srv srcs[12]);
+
+export void program_order(texture output)
+{
+    ResourceDesc desc = output.desc();
+
+    texture t0 = create_texture(desc);
+    texture t1 = create_texture(desc);
+    texture t2 = create_texture(desc);
+    texture t3 = create_texture(desc);
+    texture t4 = create_texture(desc);
+    texture t5 = create_texture(desc);
+
+    draw(0, t0);
+    draw(1, t1);
+    draw(2, t2);
+    draw(3, t3);
+    draw(4, t4);
+    draw(5, t5);
+    blt(6, output, t0);
+    blt(7, output, t1);
+    blt(8, output, t2);
+    blt(9, output, t3);
+    blt(10, output, t4);
+    blt(11, output, t5);
+
+    draw(12, t0);
+    blt(13, output, t0);
+    draw(14, t1);
+    blt(15, output, t1);
+    draw(16, t2);
+    blt(17, output, t2);
+    draw(18, t3);
+    blt(19, output, t3);
+    draw(20, t4);
+    blt(21, output, t4);
+    draw(22, t5);
+    blt(23, output, t5);
+}
+
+export void memory_saving(texture output)
+{
+    ResourceDesc desc = output.desc();
+
+    texture t0 = create_texture(desc);
+    texture t1 = create_texture(desc);
+    texture t2 = create_texture(desc);
+    texture t3 = create_texture(desc);
+    texture t4 = create_texture(desc);
+    texture t5 = create_texture(desc);
+
+    draw(0, t0);
+    draw(1, t1);
+    draw(2, t2);
+    draw(3, t3);
+    draw(4, t4);
+    draw(5, t5);
+    blt(6, output, t0);
+    blt(7, output, t1);
+    blt(8, output, t2);
+    blt(9, output, t3);
+    blt(10, output, t4);
+    blt(11, output, t5);
+}
+
+export void random_order(texture output)
+{
+    ResourceDesc desc = output.desc();
+
+    texture tmp[12];
+
+    for (uint i = 0; i < 12; i++)
+    {
+        tmp[i] = create_texture(desc);
+        draw(i, tmp[i]);
+    }
+
+    blt_all(12, output, tmp);
+}
+
+export void dead_code_elimination(texture output, bool bBlt0, bool bBlt1)
+{
+    ResourceDesc desc = output.desc();
+
+    texture t0 = create_texture(desc);
+    texture t1 = create_texture(desc);
+
+    draw(0, t0);
+
+    draw(1, t1);
+
+    if (bBlt0)
+    {
+        blt(2, output, t0);
+    }
+
+    if (bBlt1)
+    {
+        blt(3, output, t1);
+    }
+}
+
+export void gfx_comp_batching(texture output)
+{
+    ResourceDesc desc = output.desc();
+
+    texture t0 = create_texture(desc);
+    texture t1 = create_texture(desc);
+    texture t2 = create_texture(desc);
+    texture t3 = create_texture(desc);
+    texture t4 = create_texture(desc);
+    texture t5 = create_texture(desc);
+
+    draw(0, t0);
+    comp_draw(1, t1);
+    comp_draw(2, t2);
+    draw(3, t3);
+    draw(4, t4);
+    comp_draw(5, t5);
+
+    blt(6, output, t0);
+    blt(7, output, t1);
+    blt(8, output, t2);
+    blt(9, output, t3);
+    blt(10, output, t4);
+    blt(11, output, t5);
+}

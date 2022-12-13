@@ -1,0 +1,106 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+struct StructArg
+{
+    float f;
+    uint u;
+};
+
+node Geo( rtv dst : SV_Target0, uint geoId, StructArg s, uint4 v, uint a[4] );
+node Downsample( rtv dst : SV_Target0, srv src, float2 invSize );
+compute   node DownsampleCompute( [relaxed] uav dst, [readonly(cs)] texture src, float2 invSize, uint2 dispatchGroups );
+graphics  node Quads( [relaxed] rtv Color : SV_Target0, [readonly(vs, ps)] texture src, uint geoId );
+
+// Test non-export function. Should not be included in __rps_entries_.
+uint Add(uint a, uint b)
+{
+    return a + b;
+}
+
+export void downsample([readonly(present)] texture backbuffer, bool useAsyncCompute, bool use_array, uint geos)
+{
+    ResourceDesc backbufferDesc = backbuffer.desc();
+
+    uint32_t width = (uint32_t)backbufferDesc.Width;
+    uint32_t height = backbufferDesc.Height;
+    RPS_FORMAT format = backbufferDesc.Format;
+
+    uint downsamples = 3;
+
+    if (geos == 0)
+    {
+        clear(backbuffer, float4(0.0, 0.2, 0.4, 1.0));
+    }
+
+    texture geoRT;
+
+    if (use_array && (geos > 0))
+    {
+        geoRT = create_tex2d(format, width / 2, height / 2, Add(downsamples, 1), geos);
+    }
+
+    texture colorRtv = null;
+    texture texView;
+
+    texture backBufferRtv = backbuffer.mips(0);
+
+    for( uint g = 0; g < geos; g++ )
+    {
+        if (!use_array)
+        {
+            geoRT = create_tex2d(format, width / 2, height / 2, downsamples + 1);
+            colorRtv = geoRT.mips(0).array(0);
+        }
+        else
+        {
+            colorRtv = geoRT.mips(0).array(g);
+        }
+
+        if (colorRtv != null)
+        {
+            clear(colorRtv, float4(0.0, 0.2, 0.4, 1.0));
+        }
+
+        uint4 indexCounts = { 12, 9, 6, 3 };
+        uint indexCounts2[4] = { 3, 3, 12, 12 };
+        StructArg s;
+        s.f = 1.5f;
+        s.u = geos - 1 - g;
+
+        Geo(colorRtv, g, s, indexCounts, indexCounts2);
+
+        uint2 srcSize = uint2(colorRtv.desc().Width, colorRtv.desc().Height);
+
+        for ( uint d = 0; d < downsamples; d++ )
+        {
+            texView = colorRtv;
+
+            uint2 currSrcSize = srcSize >> d;
+            float2 invSize = float2(1.0f / currSrcSize);
+
+            colorRtv = geoRT.mips(d + 1).array(use_array ? g : 0);
+
+            if (useAsyncCompute)
+            {
+                uint2 dispatchGroups = (currSrcSize + 7) / 8;
+                async DownsampleCompute(colorRtv, texView, invSize, dispatchGroups);
+            }
+            else
+            {
+                Downsample(colorRtv, texView, invSize );
+            }
+        }
+
+        texture downsampledSrv = colorRtv;
+
+        if (downsampledSrv != null)
+        {
+            Quads(backbuffer, downsampledSrv, g);
+        }
+    }
+}

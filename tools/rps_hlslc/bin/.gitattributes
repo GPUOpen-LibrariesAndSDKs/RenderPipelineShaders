@@ -1,0 +1,5 @@
+dxcompiler.dll filter=lfs diff=lfs merge=lfs -text
+dxil.dll filter=lfs diff=lfs merge=lfs -text
+llvm-cbe.exe filter=lfs diff=lfs merge=lfs -text
+rps-hlslc.exe filter=lfs diff=lfs merge=lfs -text
+rps-jit.dll filter=lfs diff=lfs merge=lfs -text

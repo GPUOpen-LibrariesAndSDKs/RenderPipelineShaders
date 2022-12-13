@@ -1,0 +1,87 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+compute node fill_uv(uav dst, float blue);
+node msaa_quad(rtv dst : SV_Target0, RpsViewport dstViewport : SV_Viewport);
+node blt_to_swapchain(rtv dst : SV_Target0, srv src, RpsViewport dstViewport : SV_Viewport);
+
+#define subViewport(dstSize, col, row) (viewport(col * dstSize.x, row * dstSize.y, dstSize.x, dstSize.y))
+
+export void rps_main([readonly(present)] texture backbuffer, bool bTestMinMax)
+{
+    ResourceDesc backbufferDesc = backbuffer.desc();
+    uint2 dstVpSize = uint2((uint32_t)backbufferDesc.Width / 4, backbufferDesc.Height / 4);
+
+    uint numMips = 2;
+    uint numArraySlices = 3;
+    uint texWidth = 133;
+    uint texHeight = 72;
+    texture src2D = create_tex2d( RPS_FORMAT_R8G8B8A8_UNORM, texWidth, texHeight, numMips, numArraySlices );
+
+    // Clear first subresources
+    fill_uv( src2D.mips(0).array(0), 0 );
+    fill_uv( src2D.mips(1).array(0), 1 );
+    clear( src2D.mips(0).array(2), float4(0, 0, 0, 0) );
+    clear( src2D.mips(1).array(2), float4(0, 0, 0, 0) );
+
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(0), subViewport( dstVpSize, 0, 0 ) );
+    blt_to_swapchain( backbuffer, src2D.mips(1).array(0), subViewport( dstVpSize, 1, 0 ) );
+
+    // Copy full-subresources
+    copy_texture( src2D.array(1), src2D.array(0) );
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 2, 0 ) );
+    blt_to_swapchain( backbuffer, src2D.mips(1).array(1), subViewport( dstVpSize, 3, 0 ) );
+
+    // Copy full-subresource to region
+    copy_texture( src2D.mips(0).array(2), uint3(0, texHeight / 2, 0), src2D.mips(1).array(1), uint3(0,0,0), uint3(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF) );
+
+    // Copy region to region
+    copy_texture( src2D.mips(0).array(2), uint3(texWidth / 2 + 15, 10, 0), src2D.mips(1).array(1), uint3(15, 10, 0), uint3(texWidth / 2 - 30, texHeight / 2 - 20, 1) );
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(2), subViewport( dstVpSize, 0, 1 ) );
+
+    copy_texture( src2D.mips(0).array(2), uint3(10, 5, 0), src2D.mips(0).array(1), uint3(5, 3, 0), uint3(texWidth / 2, texHeight / 2, 1) );
+    copy_texture( src2D.mips(0).array(2), uint3(texWidth / 2 - 10, texHeight / 2 - 5, 0), src2D.mips(0).array(1), uint3(texWidth / 2 - 5, texHeight / 2 - 3, 0), uint3(texWidth / 2, texHeight / 2, 1) );
+
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(2), subViewport( dstVpSize, 1, 1 ) );
+
+    // copy tex to buffer
+
+    // TODO: Expose buffer row pitch alignment requirements
+    uint3 bufImageSize = float3(175, 97, 1);
+    uint bufOffset = 512 * 3;
+    uint bufRowPitch = (bufImageSize.x * 4 + 255) & ~(255u);
+    uint bufSize = bufOffset + bufRowPitch * bufImageSize.y * bufImageSize.z;
+
+    buffer tmpBuf = create_buffer( bufSize );
+
+    copy_texture_to_buffer( tmpBuf, bufOffset, bufRowPitch, bufImageSize, uint3(0, 0, 0), src2D.mips(0).array(2), uint3(0, 0, 0), uint3(texWidth / 2 + 20, texHeight / 2 + 10, 1) );
+    copy_texture_to_buffer( tmpBuf, bufOffset, bufRowPitch, bufImageSize, uint3(texWidth / 2 + 20, texHeight / 2 + 10, 0), src2D.mips(0).array(1), uint3(5, 3, 0), uint3(texWidth / 2, texHeight / 2, 1) );
+    copy_buffer_to_texture( src2D.mips(0).array(1), uint3(5, 5, 0), tmpBuf, bufOffset, bufRowPitch, bufImageSize, uint3(5, 5, 0), uint3(texWidth / 2, texHeight / 2, 1) );
+    copy_buffer_to_texture( src2D.mips(1).array(1), uint3(5, 5, 0), tmpBuf, bufOffset, bufRowPitch, bufImageSize, uint3(texWidth / 2 + 20, texHeight / 2 + 10, 0), uint3(texWidth / 2 - 10, texHeight / 2 - 10, 1) );
+
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 2, 1 ) );
+    blt_to_swapchain( backbuffer, src2D.mips(1).array(1), subViewport( dstVpSize, 3, 1 ) );
+
+    texture msaaRT = create_tex2d( RPS_FORMAT_R8G8B8A8_UNORM, texWidth, texHeight, 1, 1, 1, 2 ); // MSAA2x
+    clear( msaaRT, float4(0, 0, 1, 1) );
+    msaa_quad( msaaRT, viewport( texWidth * 0.2f, texHeight * 0.1f, texWidth * 0.6f, texHeight * 0.8f ) );
+
+    resolve( src2D.mips(0).array(1), uint2(0, 0), msaaRT, uint2(0, 0), uint2(0xFFFFFFFFu, 0xFFFFFFFFu), RPS_RESOLVE_MODE_AVERAGE );
+    blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 0, 2 ) );
+
+    if(bTestMinMax)
+    {
+        resolve( src2D.mips(0).array(1), uint2(0, 0), msaaRT, uint2(0, 0), uint2(0xFFFFFFFFu, 0xFFFFFFFFu), RPS_RESOLVE_MODE_MIN );
+        blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 1, 2 ) );
+
+        resolve( src2D.mips(0).array(1), uint2(0, 0), msaaRT, uint2(0, 0), uint2(0xFFFFFFFFu, 0xFFFFFFFFu), RPS_RESOLVE_MODE_MAX );
+        blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 2, 2 ) );
+
+        resolve( src2D.mips(0).array(1), uint2(8, 5), msaaRT, uint2(texWidth * 0.2f, texHeight * 0.1f), uint2(texWidth * 0.6f, texHeight * 0.8f), RPS_RESOLVE_MODE_MIN );
+        blt_to_swapchain( backbuffer, src2D.mips(0).array(1), subViewport( dstVpSize, 3, 2 ) );
+    }
+}

@@ -1,0 +1,227 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+// No clear on rt2/rt4 to test discontinous clear color indices
+// and potential artifact presence. 
+node test_unordered_5_mrt_no_ds(
+    rtv rt1 : SV_Target1,
+    RpsViewport vp : SV_Viewport,
+    float4 clearColor1 : SV_ClearColor1,
+    rtv rt3 : SV_Target3,
+    rtv rt2 : SV_Target2,
+    float4 clearColor0 : SV_ClearColor0,
+    float4 clearColor3 : SV_ClearColor3,
+    rtv rt4 : SV_Target4,
+    rtv rt0 : SV_Target0,
+    uint4 scissor : SV_ScissorRect);
+
+node test_unordered_3_mrt_ds(
+    rtv rt2 : SV_Target2,
+    dsv ds : SV_DepthStencil,
+    float clearDepth : SV_ClearDepth,
+    uint clearStencil : SV_ClearStencil,
+    rtv rt0 : SV_Target0,
+    rtv rt1 : SV_Target1);
+
+node test_bind_dsv_write_depth_stencil(rtv rt : SV_Target0, [readwrite(depth, stencil)] texture ds : SV_DepthStencil);
+node test_bind_dsv_read_depth_write_stencil([readonly(ps)] texture depthSrv, rtv rt : SV_Target0, [readonly(depth)][readwrite(stencil)] texture ds : SV_DepthStencil);
+node test_bind_dsv_read_depth_stencil([readonly(ps)] texture depthSrv, [readonly(ps)] texture stencilSrv, rtv rt : SV_Target0, [readonly(depth, stencil)] texture ds : SV_DepthStencil);
+
+node test_mrt_with_array(
+    rtv rtArr0[3] : SV_Target0,
+    rtv rts1 : SV_Target5,
+    srv src[12],
+    rtv rtArr1[2] : SV_Target3);
+
+node test_large_array(
+    rtv rtArr[22],
+    srv src[48]);
+
+node test_rt_array(rtv rt0 : SV_Target0, float4 clearCol : SV_ClearColor0);
+
+node blt_to_swapchain(rtv dst : SV_Target0, srv src, RpsViewport dstViewport : SV_Viewport);
+node draw_cube_to_swapchain(rtv dst : SV_Target, [readonly(ps, cubemap)] texture src, RpsViewport dstViewport : SV_Viewport);
+
+void test_unordered_mrt_and_clear(texture backbuffer, uint4 inViewport)
+{
+    const uint w = inViewport.z;
+    const uint h = inViewport.w;
+
+    texture rt0 = create_tex2d(RPS_FORMAT_R8G8B8A8_UNORM, w, h);
+    texture rt1 = create_tex2d(RPS_FORMAT_R16G16B16A16_FLOAT, w, h);
+    texture rt23 = create_tex2d(RPS_FORMAT_B8G8R8A8_UNORM, w, h, 1, 2);
+    texture rt4 = create_tex2d(RPS_FORMAT_R10G10B10A2_UNORM, w, h);
+    texture ds = create_tex2d(RPS_FORMAT_R32G8X24_TYPELESS, w, h);
+
+    const float4 clear0 = float4(1, 0, 0, 1);
+    const float4 clear1 = float4(0, 1, 0, 1);
+    const float4 clear3 = float4(0, 0, 1, 1);
+
+    RpsViewport subViewport = viewport(
+        inViewport.x + w * 0.1f,
+        inViewport.y + h * 0.2f,
+        w * 0.7f,
+        h * 0.5f);
+
+    test_unordered_5_mrt_no_ds(
+        rt1, subViewport, clear1, rt23.array(1), rt23.array(0), clear0, clear3, rt4, rt0, uint4(0, 0, w, h));
+
+    blt_to_swapchain(backbuffer, rt0, viewport(0, 0, w, h));
+    blt_to_swapchain(backbuffer, rt1, viewport(w, 0, w, h));
+    blt_to_swapchain(backbuffer, rt23.array(0), viewport(w * 2, 0, w, h));
+    blt_to_swapchain(backbuffer, rt23.array(1), viewport(w * 3, 0, w, h));
+
+    blt_to_swapchain(backbuffer, rt4, viewport(0, h, w, h));
+
+    test_unordered_3_mrt_ds(rt23.array(0), ds.format(RPS_FORMAT_D32_FLOAT_S8X24_UINT), 0.5f, 0x7f, rt0, rt1);
+
+    blt_to_swapchain(backbuffer, rt0, viewport(w, h, w, h));
+    blt_to_swapchain(backbuffer, rt1, viewport(w * 2, h, w, h));
+    blt_to_swapchain(backbuffer, rt23.array(0), viewport(w * 3, h, w, h));
+
+    test_rt_array(rt23, float4(0, 1, 1, 1));
+
+    blt_to_swapchain(backbuffer, rt23.array(0), viewport(0, h * 2, w, h));
+    blt_to_swapchain(backbuffer, rt23.array(1), viewport(w, h * 2, w, h));
+
+    test_unordered_5_mrt_no_ds(
+        rt1, subViewport, clear1, rt23.array(1), rt23.array(0), clear0, clear3, rt4, rt0,
+        uint4(w / 3, h / 3, 2 * w / 3, 2 * h / 3));
+
+    blt_to_swapchain(backbuffer, rt0, viewport(w * 2, h * 2, w, h));
+    blt_to_swapchain(backbuffer, rt1, viewport(w * 3, h * 2, w, h));
+}
+
+texture test_array_node_params(texture backbuffer, uint4 inViewport)
+{
+    const uint w = inViewport.z;
+    const uint h = inViewport.w;
+
+    texture cubeMaps = create_tex2d(RPS_FORMAT_R8G8B8A8_UNORM, 64, 64, 1, 128);
+
+    // TODO: Add a helper to convert subresource range to array of views and vice versa.
+    texture rtArr012[3] = { cubeMaps.array(6, 6), cubeMaps.array(2 * 6, 6), cubeMaps.array(3 * 6, 6) };
+    texture rt3 = cubeMaps.array(4 * 6, 6);
+    texture rtArr45[2] = { cubeMaps.array(5 * 6, 6), cubeMaps.array(6 * 6, 6) };
+
+    texture srvs[12];
+    for(uint i = 0; i < 12; i++)
+    {
+        uint clearSlice = ((i < 6) ? 0 : 7) * 6 + (i % 6);
+        clear( cubeMaps.array(clearSlice), float4(i & 1, (i & 2) >> 1, (i & 4) >> 2, 1) );
+
+        srvs[i] = cubeMaps.array(clearSlice);
+    }
+
+    test_mrt_with_array( rtArr012, rt3, srvs, rtArr45 );
+
+    for (uint i = 0; i < 8; i++)
+    {
+        draw_cube_to_swapchain(backbuffer, cubeMaps.array(6 * i, 6).cubemap(), viewport(w * (i % 4), h * (3 + i / 4), w, h));
+    }
+
+    texture largeRtvArray[22];
+    texture largeSrvArray[48];
+
+    for (uint i = 0; i < 22; i++)
+    {
+        largeRtvArray[i] = cubeMaps.array(48 + i);
+    }
+
+    for (uint i = 0; i < 48; i++)
+    {
+        largeSrvArray[i] = cubeMaps.array(i);
+    }
+
+    test_large_array(largeRtvArray, largeSrvArray);
+
+    return cubeMaps;
+}
+
+void test_depth_stencil_rw(texture backbuffer, uint4 inViewport)
+{
+    const uint w = inViewport.z;
+    const uint h = inViewport.w;
+
+    texture offScreenImg = create_tex2d(RPS_FORMAT_R8G8B8A8_UNORM, w, h);
+    texture depthStencil = create_tex2d(RPS_FORMAT_D32_FLOAT_S8X24_UINT, w, h);
+
+    clear(offScreenImg, float4(1, 0, 0, 1));
+    clear(depthStencil, 1.0f, 0);
+
+    test_bind_dsv_write_depth_stencil(offScreenImg, depthStencil);
+
+    blt_to_swapchain(backbuffer, offScreenImg, viewport(0, h * 5, w, h));
+    blt_to_swapchain(
+        backbuffer, depthStencil.format(RPS_FORMAT_R32_FLOAT_X8X24_TYPELESS), viewport(w, h * 5, w, h));
+
+    test_bind_dsv_read_depth_write_stencil(depthStencil.format(RPS_FORMAT_R32_FLOAT_X8X24_TYPELESS),
+                                           offScreenImg,
+                                           depthStencil);
+
+    test_bind_dsv_read_depth_stencil(depthStencil.format(RPS_FORMAT_R32_FLOAT_X8X24_TYPELESS),
+                                     depthStencil.format(RPS_FORMAT_X32_TYPELESS_G8X24_UINT),
+                                     offScreenImg,
+                                     depthStencil);
+
+    blt_to_swapchain(backbuffer, offScreenImg, viewport(w * 2, h * 5, w, h));
+    blt_to_swapchain(
+        backbuffer, depthStencil.format(RPS_FORMAT_R32_FLOAT_X8X24_TYPELESS), viewport(w * 3, h * 5, w, h));
+}
+
+node test_buffer_rtv_clear(
+    [readwrite(rendertarget)] buffer rt0 : SV_Target0,
+    float4 clearColor1 : SV_ClearColor0);
+
+node test_buffer_rtv(
+    [readwrite(rendertarget)] buffer rt0 : SV_Target0,
+    float4 clearColor1 : SV_ClearColor0);
+
+void test_buffer_rtv_and_clear(texture backbuffer, uint4 inViewport)
+{
+    // TODO: We want to add rtv_buf as well as RPS_BUFFER_WHOLE_SIZE defs in RPSL.
+    const uint w = inViewport.z;
+    const uint h = inViewport.w;
+
+    const uint rowPitch = ((w * 4) + 255) & ~255;
+    const uint wAligned = rowPitch / 4;
+
+    const uint   bufSize   = wAligned * h * 4;
+    const uint   bufOffset = bufSize / 2;
+    const float4 clear0    = float4(1, 0, 0, 1);
+
+    buffer buf           = create_buffer(bufSize, 1, RPS_RESOURCE_FLAG_ROWMAJOR_IMAGE);
+    buffer bufViewFirst  = create_buffer_view(buf, 0, bufOffset, 0, RPS_FORMAT_B8G8R8A8_UNORM);
+    buffer bufViewSecond = create_buffer_view(buf, bufOffset, bufSize - bufOffset, 0, RPS_FORMAT_B8G8R8A8_UNORM);
+
+    test_buffer_rtv_clear(bufViewFirst, clear0);
+    test_buffer_rtv(bufViewSecond, clear0);
+
+    texture rt0 = create_tex2d(RPS_FORMAT_R8G8B8A8_UNORM, wAligned, h);
+    copy_buffer_to_texture(
+        rt0, uint3(0, 0, 0), buf, 0, rowPitch, uint3(wAligned, h, 1), uint3(0, 0, 0), uint3(wAligned, h, 1));
+    
+    blt_to_swapchain(backbuffer, rt0, viewport(inViewport.x, inViewport.y, w, h));
+}
+
+export void rps_main([readonly(present)] texture backbuffer, bool bBufferRTVSupported)
+{
+    ResourceDesc backbufferDesc = backbuffer.desc();
+
+    uint4 dstViewport = uint4(0, 0, (uint32_t)backbufferDesc.Width / 4, backbufferDesc.Height / 6);
+
+    test_unordered_mrt_and_clear(backbuffer, dstViewport);
+
+    if (!bBufferRTVSupported)
+    {
+        test_buffer_rtv_and_clear(backbuffer, uint4(0, 0, 256, 120));
+    }
+
+    test_array_node_params(backbuffer, dstViewport);
+
+    test_depth_stencil_rw(backbuffer, dstViewport);
+}

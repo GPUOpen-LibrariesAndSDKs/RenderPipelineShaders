@@ -1,0 +1,67 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+node Foo(uint ia[10], float fa[16]);
+
+export void rps_main(int i1, uint u1, int2 i2, uint3 u3, float f1, float4 f4)
+{
+    uint ia[10];
+    float fa[16];
+
+    ia[0] = (uint)abs(i1);
+
+    ia[1] = (i1 >> 3) & 0xff;
+
+    ia[2] = asuint(f4.w);
+
+    ia[3] = mad(u3.x, u3.y, u3.z);
+
+    ia[4] = countbits(u3.y);
+
+    ia[5] = u3.x / 17;
+    ia[6] = u3.x % 17;
+
+    uint64_t xx = (uint64_t(u1) << 32) | u3.x;
+    xx = xx / ((uint64_t)u3.y + 1);
+
+    ia[7] = uint(xx & 0xffffffff);
+
+    ia[8] = firstbithigh(u3.y);
+
+    ia[9] = firstbithigh(-(int)u3.y - 4096);
+
+    fa[0] = atan2(f4.x + f1, f4.y);
+
+    fa[1] = asfloat(u1);
+
+    fa[2] = (all(f4 > 0) && any(u3 < 1000)) ? float(u1) : float(i1);
+
+    fa[3] = i1 ? f4.x : f4.y;
+
+    fa[4] = max(f4.x, f4.y);
+
+    fa[5] = lerp(f4.x, f4.y, f4.z);
+
+    fa[6] = floor(f4.x);
+    fa[7] = ceil(f4.y);
+    fa[8] = round(f4.z);
+    fa[9] = trunc(f4.w);
+
+    fa[10] = (isinf(f4.x) || isnan(f4.y) || !isfinite(f4.z)) ? 1.0f : 2.0f;
+
+    fa[11] = mad(f4.y, f4.z, f4.x);
+
+    fa[12] = cos(f4.x);
+
+    fa[13] = rsqrt(abs(f4.y) + 0.0001f);
+
+    fa[14] = saturate(f4.z);
+
+    fa[15] = exp(min(f4.z, 1));
+
+    Foo(ia, fa);
+}

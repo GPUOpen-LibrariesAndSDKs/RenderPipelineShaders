@@ -1,0 +1,39 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+node DrawTriangle(rtv dst : SV_Target0);
+node Blt(float3 tint, ps_srv src, rtv dst : SV_Target0, RpsViewport viewport : SV_Viewport);
+
+export void render_colored([readonly(present)] texture backBuffer, [readonly(ps)] out texture offscreenRT)
+{
+    ResourceDesc backbufferDesc   = backBuffer.desc();
+    uint32_t     width            = (uint32_t)backbufferDesc.Width / 2;
+    uint32_t     height           = (uint32_t)backbufferDesc.Height / 2;
+    RPS_FORMAT   backbufferFormat = backbufferDesc.Format;
+
+    clear(backBuffer, float4(0.1, 0.1, 0.1, 1.0));
+
+    // Create offscreen buffer and assign to the out parameter
+    offscreenRT = create_tex2d(backbufferFormat, width, height);
+    clear(offscreenRT, float4(0.1, 0.2, 0.4, 1.0));
+
+    DrawTriangle(offscreenRT);
+
+    copy_texture(backBuffer, uint3(0, 0, 0), offscreenRT, uint3(0, 0, 0), uint3(width, height, 1));
+}
+
+export void render_tinted([readonly(present)] texture backBuffer, [readonly(ps)] texture offscreenBuffer)
+{
+    ResourceDesc backbufferDesc = backBuffer.desc();
+    uint32_t     width          = (uint32_t)backbufferDesc.Width / 2;
+    uint32_t     height         = (uint32_t)backbufferDesc.Height / 2;
+
+    Blt(float3(1, 1, 1), offscreenBuffer, backBuffer, viewport(0, 0, width, height));
+    Blt(float3(1, 0, 0), offscreenBuffer, backBuffer, viewport(width, 0, width, height));
+    Blt(float3(0, 1, 0), offscreenBuffer, backBuffer, viewport(0, height, width, height));
+    Blt(float3(0, 0, 1), offscreenBuffer, backBuffer, viewport(width, height, width, height));
+}

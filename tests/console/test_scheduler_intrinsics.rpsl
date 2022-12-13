@@ -1,0 +1,179 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+graphics node Ending(uint id, rtv dst, [readonly(ps)] buffer src0, [readonly(ps)] buffer src1, [readonly(ps)] buffer src2);
+compute node  N(uint id, [readwrite(cs)] buffer b);
+node          N_CpuOnly(uint id);
+node          M_WaitsN(uint id, rtv dst, node n);
+
+enum TestCases
+{
+    TEST_CASE_DEFAULT           = 0,
+    TEST_CASE_ATOMIC            = 1,
+    TEST_CASE_SEQUENTIAL        = 2,
+    TEST_CASE_ATOMIC_SEQUENTIAL = 3,
+};
+
+uint MakeId(uint callId, uint localId)
+{
+    return (callId << 16) | localId;
+}
+
+void foo_default(buffer x, buffer y, uint callId, bool useBarrier)
+{
+    if (useBarrier)
+        sch_barrier();
+
+    N(MakeId(callId, 0), x);
+    N(MakeId(callId, 1), x);
+    N(MakeId(callId, 2), x);
+    N(MakeId(callId, 3), x);
+
+    if (useBarrier)
+        sch_barrier();
+
+    N(MakeId(callId, 4), y);
+    N(MakeId(callId, 5), y);
+    N(MakeId(callId, 6), y);
+    N(MakeId(callId, 7), y);
+
+    if (useBarrier)
+        sch_barrier();
+
+    N(MakeId(callId, 8), x);
+    N(MakeId(callId, 9), y);
+    N(MakeId(callId, 10), x);
+    N(MakeId(callId, 11), y);
+
+    if (useBarrier)
+        sch_barrier();
+}
+
+[subgraph(atomic)] void foo_atomic(buffer x, buffer y, uint callId, bool useBarrier) {
+    foo_default(x, y, callId, useBarrier);
+}
+
+[subgraph(sequential)] void foo_sequential(buffer x, buffer y, uint callId, bool useBarrier)
+{
+    foo_default(x, y, callId, useBarrier);
+}
+
+[subgraph(atomic, sequential)] void foo_atomic_sequential(buffer x, buffer y, uint callId, bool useBarrier) {
+    foo_default(x, y, callId, useBarrier);
+}
+
+export void test_schedule_control(texture backBuffer, uint testCase, bool useBarrier)
+{
+    buffer x = create_buffer(32);
+    buffer y = create_buffer(32);
+    buffer z = create_buffer(32);
+
+    // Early node
+    N(0, z);
+    N(1, z);
+
+    if (testCase == TEST_CASE_DEFAULT)
+    {
+        foo_default(x, y, 2, useBarrier);
+    }
+    else if (testCase == TEST_CASE_ATOMIC)
+    {
+        foo_atomic(x, y, 2, useBarrier);
+    }
+    else if (testCase == TEST_CASE_SEQUENTIAL)
+    {
+        foo_sequential(x, y, 2, useBarrier);
+    }
+    else if (testCase == TEST_CASE_ATOMIC_SEQUENTIAL)
+    {
+        foo_atomic_sequential(x, y, 2, useBarrier);
+    }
+
+    node n = N_CpuOnly(3);
+    N_CpuOnly(4);
+
+    N(5, z);
+
+    N(6, x);
+    N(6, x);
+
+    M_WaitsN(7, backBuffer, n);
+
+    Ending(8, backBuffer, x, y, z);
+}
+
+export void test_schedule_control_nested_atomic_subgraph(texture backBuffer)
+{
+    buffer x = create_buffer(32);
+    buffer y = create_buffer(32);
+    buffer z = create_buffer(32);
+    buffer w = create_buffer(32);
+
+    // Early node
+    N(0, w);
+    N(1, z);
+    N(2, z);
+    N(3, x);
+    N(4, y);
+
+    [subgraph(atomic)] {
+        N(5, x);
+        N(6, y);
+        N(7, x);
+        N(8, y);
+
+        [subgraph(atomic)] {
+            N(9, x);
+            N(10, y);
+            N(11, x);
+            N(12, y);
+
+            [subgraph(atomic)] {
+                N(13, x);
+                N(14, y);
+                N(15, w);
+                N(16, x);
+                N(17, y);
+            }
+        }
+
+        [subgraph(atomic)] {
+            N(18, x);
+            N(19, y);
+            N(20, x);
+            N(21, y);
+        }
+
+        N(22, x);
+        N(23, y);
+        N(24, z);
+
+        [subgraph(atomic, sequential)] {
+            N(25, x);
+            N(26, y);
+            N(27, x);
+            N(28, y);
+        }
+    }
+
+    N(30, x);
+    N(31, y);
+    N(32, z);
+
+    Ending(40, backBuffer, x, y, z);
+}
+
+
+export void test_abort(texture backBuffer, int errorCode)
+{
+    buffer x = create_buffer(32);
+
+    if (errorCode < 0)
+        abort(errorCode);
+
+    Ending(0, backBuffer, x, x, x);
+}

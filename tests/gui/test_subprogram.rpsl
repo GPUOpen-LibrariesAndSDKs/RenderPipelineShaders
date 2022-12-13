@@ -1,0 +1,32 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+node DrawScene([readwrite(rendertarget)] texture rt : SV_Target0, float4 color, RpsViewport viewport : SV_Viewport0);
+node DrawGUI([readwrite(rendertarget)] texture rt : SV_Target0, RpsViewport viewport : SV_Viewport0, float4 color);
+
+export void Main([readonly(present)] texture backBuffer, RpsViewport viewport)
+{
+    clear(backBuffer, 0.0f.xxxx);
+    DrawScene(backBuffer, float4(1.0f, 1.0f, 0.0f, 1.0f), viewport);
+
+    viewport.x += viewport.width * 0.3f;
+    viewport.y += viewport.height * 0.3f;
+    viewport.width *= 0.4f;
+    viewport.height *= 0.4f;
+
+    DrawGUI(backBuffer, viewport, float4(1.0f, 0.0f, 0.0f, 0.5f));
+}
+
+export void Scene([readwrite(rendertarget)] texture rt, float4 color, RpsViewport viewport)
+{
+    DrawScene(rt, float4(0.0f, 1.0f, 0.0f, 1.0f), viewport);
+}
+
+export void GUI([readwrite(rendertarget)] texture rt, RpsViewport viewport, float4 color)
+{
+    DrawGUI(rt, viewport, float4(0.0f, 0.0f, 1.0f, 0.5f));
+}

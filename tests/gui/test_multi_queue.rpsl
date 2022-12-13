@@ -1,0 +1,89 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+node         UpdateInstanceData([writeonly(cpu)] buffer uploadBuffer, [writeonly(cpu)] buffer constBuffer);
+compute node Procedural([readwrite(cs)] texture proceduralTexture, [readonly(cb, cs)] buffer constBuffer, uint2 outputDim);
+compute node GenMip([writeonly(cs)] texture outMip, [readwrite(cs)] texture inMip, uint2 outputDim);
+node         ShadowMap([readonly(vs)] buffer instanceBuffer, [readonly(cb, vs)] buffer constBuffer, dsv shadowMap : SV_DepthStencil);
+node         ShadingPass(rtv colorBuffer : SV_Target0,
+                         dsv depthBuffer : SV_DepthStencil,
+                         [readonly(vs)] buffer instanceBuffer,
+                         [readonly(ps)] texture shadowMap,
+                         [readonly(ps)] texture proceduralTexture,
+                         [readonly(cb, vs, ps)] buffer constBuffer);
+
+node UploadInstanceData([writeonly(copy)] buffer instanceBuffer, [readonly(copy)] buffer uploadBuffer)
+{
+    return copy_buffer(instanceBuffer, uploadBuffer);
+}
+
+struct InstanceData
+{
+    float4x3 transform;
+    float4   color;
+};
+
+struct CBufferData
+{
+    float4x4 viewProjMat;
+    float4x4 lightViewProjMat;
+    float3   lightDir;
+    float    timeInSeconds;
+};
+
+export void main([readonly(present)] texture backBuffer, uint numBoxes, uint shadowMapDim, uint proceduralTextureDim)
+{
+    clear(backBuffer, float4(0.0, 0.2, 0.4, 1.0));
+
+    ResourceDesc backBufferDesc = backBuffer.desc();
+
+    buffer uploadBuffer = create_buffer(
+        sizeof(InstanceData) * numBoxes, backBufferDesc.TemporalLayers, RPS_RESOURCE_FLAG_PREFER_GPU_LOCAL_CPU_VISIBLE);
+
+    buffer constantBuffer = create_buffer(
+        sizeof(CBufferData), backBufferDesc.TemporalLayers, RPS_RESOURCE_FLAG_PREFER_GPU_LOCAL_CPU_VISIBLE);
+
+    buffer instanceBuffer = create_buffer(sizeof(InstanceData) * numBoxes);
+
+    // setting buffer view size to UINT64_MAX for RPS_BUFFER_WHOLE_SIZE test.
+    buffer constantBufferView = constantBuffer.bytes(0, 0xffffffffffffffff);
+    buffer instanceBufferView = instanceBuffer.bytes(0, 0xffffffffffffffff);
+
+    texture proceduralTexture = create_tex2d(RPS_FORMAT_R8G8B8A8_UNORM, proceduralTextureDim, proceduralTextureDim, 0);
+
+    texture depthBuffer = create_tex2d(RPS_FORMAT_R32G8X24_TYPELESS, backBufferDesc.Width, backBufferDesc.Height);
+
+    texture shadowMap = create_tex2d(RPS_FORMAT_R32_TYPELESS, shadowMapDim, shadowMapDim);
+
+    UpdateInstanceData(uploadBuffer, constantBufferView);
+
+    async UploadInstanceData(instanceBufferView, uploadBuffer);
+
+    ResourceDesc proceduralTextureDesc = proceduralTexture.desc();
+
+    async Procedural(proceduralTexture, constantBufferView, uint2(proceduralTextureDim, proceduralTextureDim));
+
+    for (uint i = 0; (i + 1) < proceduralTextureDesc.MipLevels; i++)
+    {
+        async GenMip(proceduralTexture.mips(i + 1),
+                     proceduralTexture.mips(i),
+                     uint2(proceduralTextureDim, proceduralTextureDim) >> (i + 1));
+    }
+
+    clear_depth(shadowMap.format(RPS_FORMAT_D32_FLOAT), 1.0f);
+
+    ShadowMap(instanceBufferView.stride(sizeof(InstanceData)), constantBufferView, shadowMap.format(RPS_FORMAT_D32_FLOAT));
+
+    clear(depthBuffer.format(RPS_FORMAT_D32_FLOAT_S8X24_UINT), 1.0f, 0);
+
+    ShadingPass(backBuffer,
+                depthBuffer.format(RPS_FORMAT_D32_FLOAT_S8X24_UINT),
+                instanceBufferView.stride(sizeof(InstanceData)),
+                shadowMap.format(RPS_FORMAT_R32_FLOAT),
+                proceduralTexture,
+                constantBufferView);
+}

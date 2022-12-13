@@ -1,0 +1,25 @@
+// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.RTF for full license details.
+
+graphics node GeometryPass(uint passId, rtv renderTarget : SV_Target0, uint4 scissorRect : SV_ScissorRect);
+
+export void mt_main([readonly(present)] texture backbuffer, uint32_t numPasses)
+{
+    clear(backbuffer, float4(0.0, 0.2, 0.4, 1.0));
+
+    ResourceDesc backbufferDesc = backbuffer.desc();
+
+    uint spacing = 5;
+    uint width   = max(spacing, uint(backbufferDesc.Width + spacing) / numPasses) - spacing;
+
+    for (uint32_t i = 0; i < numPasses; i++)
+    {
+        uint4 scissor = uint4(i * (width + spacing), 0, width, backbufferDesc.Height);
+
+        GeometryPass(i, backbuffer, scissor);
+    }
+}

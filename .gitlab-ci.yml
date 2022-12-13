@@ -1,0 +1,61 @@
+variables:
+  PackageName: AMDRenderPipelineShaderSDK
+  GIT_SUBMODULE_STRATEGY: normal
+
+stages:
+  - build
+  - test
+
+build:
+  tags:
+  - windows
+  - amd64
+  - rps
+  stage: build
+  script:
+  - 'del /q ".\external\catch2\scripts\updateDocumentToC.py"'
+  - 'cmake -S ./ -B ./build -G "Visual Studio 16 2019" -A x64 -DRpsEnableVulkanTests=OFF'
+  - 'cmake --build ./build --config Debug --parallel'
+  - 'cmake --build ./build --config Release --parallel'
+  artifacts:
+      paths:
+      - build
+      - docs
+      exclude:
+      - build/**/CMakeFiles
+      - build/**/*.ilk
+      - build/**/*.obj
+
+build-vs2017:
+  tags:
+  - windows
+  - amd64
+  stage: build
+  script:
+  - 'del /q ".\external\catch2\scripts\updateDocumentToC.py"'
+  - 'cmake -S ./ -B ./build_vs2017 -G "Visual Studio 15 2017" -A x64 -DRpsEnableVulkanTests=ON'
+  - 'cmake --build ./build_vs2017 --config Debug --parallel'
+  - 'cmake --build ./build_vs2017 --config Release --parallel'
+  artifacts:
+      paths:
+      - build_vs2017
+      - docs
+      exclude:
+      - build_vs2017/**/CMakeFiles
+      - build_vs2017/**/*.ilk
+      - build_vs2017/**/*.obj
+
+test:
+  tags:
+  - windows
+  - amd64
+  - rps
+  stage: test
+  script:
+  - 'del /q ".\external\catch2\scripts\updateDocumentToC.py"'
+  - cd build
+  - 'ctest -C Release -V --output-on-failure --output-log rpsTestLog.txt --parallel 8'
+  artifacts:
+      name: "%PackageName%-%CI_COMMIT_TAG%-%CI_COMMIT_REF_NAME%-%CI_COMMIT_SHORT_SHA%"
+      paths:
+      - rpsTestLog.txt
