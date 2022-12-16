@@ -2,7 +2,7 @@
 
 Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
 
-The AMD Render Pipeline Shaders (RPS) SDK is released under the AMD INTERNAL EVALUATION LICENSE. Please see file [LICENSE.RTF](LICENSE.rtf) for full license details.
+The AMD Render Pipeline Shaders (RPS) SDK is released under the AMD INTERNAL EVALUATION LICENSE. Please see file [LICENSE.txt](LICENSE.txt) for full license details.
 
 ## Introduction
 
@@ -80,7 +80,8 @@ rps-hlslc.exe <rpsl_file_name> [-od <outout_directory>] [-m <override_module_nam
 ```
 Please see [./tools/rps_hlslc/README.md](./tools/rps_hlslc/README.md) for usage details.
 
-Currently, the RPS SDK is released under the AMD Internal Evaluation License. We welcome everyone to try it out and appreciate any feedback!
+Currently, the RPS SDK is released under the AMD Internal Evaluation License. We intend to transition to a much more permissive license after the open beta period. We welcome everyone to try it out and appreciate any feedback!
+
 If you are interested in using it in a future engine or title product, please contact an AMD Alliance Manager or Developer Technology engineer.
 
 ## Third-Party Software
