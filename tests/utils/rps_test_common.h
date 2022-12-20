@@ -50,7 +50,7 @@ static int g_NumMallocs = 0;
 static void* CountedMalloc(void* pContext, size_t size, size_t alignment)
 {
     g_NumMallocs++;
-#if _MSC_VER
+#if _MSC_VER || __MINGW32__
     return _aligned_malloc(size, alignment);
 #else
     const size_t alignedSize = alignment ? (size + (alignment - 1)) & ~(alignment - 1) : size;
