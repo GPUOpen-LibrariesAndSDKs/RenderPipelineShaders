@@ -11,6 +11,10 @@
 #include "rps/core/rps_api.h"
 #include "rps/runtime/common/rps_runtime.h"
 
+#if defined(RPS_VK_NO_PROTOTYPES) || defined(RPS_VK_DYNAMIC_VULKAN_FUNCTIONS)
+#define VK_NO_PROTOTYPES
+#endif
+
 #include <vulkan/vulkan.h>
 
 /// @addtogroup RpsVKRuntimeDevice
@@ -29,6 +33,42 @@ typedef enum RpsVKRuntimeFlagBits
 /// @brief Bitmask type for <c><i>RpsVKRuntimeFlagBits</i></c>
 typedef uint32_t RpsVKRuntimeFlags;
 
+/// @brief Pointers to some Vulkan functions - a subset used by the library.
+typedef struct RpsVKFunctions {
+    PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
+    PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
+    PFN_vkCreateImage vkCreateImage;
+    PFN_vkDestroyImage vkDestroyImage;
+    PFN_vkBindImageMemory vkBindImageMemory;
+    PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements;
+    PFN_vkCreateBuffer vkCreateBuffer;
+    PFN_vkDestroyBuffer vkDestroyBuffer;
+    PFN_vkBindBufferMemory vkBindBufferMemory;
+    PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements;
+    PFN_vkCreateFramebuffer vkCreateFramebuffer;
+    PFN_vkDestroyFramebuffer vkDestroyFramebuffer;
+    PFN_vkCreateRenderPass vkCreateRenderPass;
+    PFN_vkDestroyRenderPass vkDestroyRenderPass;
+    PFN_vkCreateBufferView vkCreateBufferView;
+    PFN_vkDestroyBufferView vkDestroyBufferView;
+    PFN_vkCreateImageView vkCreateImageView;
+    PFN_vkDestroyImageView vkDestroyImageView;
+    PFN_vkAllocateMemory vkAllocateMemory;
+    PFN_vkFreeMemory vkFreeMemory;
+    PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
+    PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
+    PFN_vkCmdSetViewport vkCmdSetViewport;
+    PFN_vkCmdSetScissor vkCmdSetScissor;
+    PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
+    PFN_vkCmdClearColorImage vkCmdClearColorImage;
+    PFN_vkCmdClearDepthStencilImage vkCmdClearDepthStencilImage;
+    PFN_vkCmdCopyImage vkCmdCopyImage;
+    PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+    PFN_vkCmdCopyImageToBuffer vkCmdCopyImageToBuffer;
+    PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;
+    PFN_vkCmdResolveImage vkCmdResolveImage;
+} RpsVKFunctions;
+
 /// @brief Creation parameters for an RPS device with a Vulkan backend.
 typedef struct RpsVKRuntimeDeviceCreateInfo
 {
@@ -36,6 +76,8 @@ typedef struct RpsVKRuntimeDeviceCreateInfo
                                                            ///  Passing NULL uses default parameters instead.
     const RpsRuntimeDeviceCreateInfo* pRuntimeCreateInfo;  ///< Pointer to general RPS runtime creation info. Passing
                                                            ///  NULL uses default parameters instead.
+    const RpsVKFunctions* pVulkanFunctions;                ///< Pointer to the Vulkan functions used by the library.
+                                                           ///  If RPS_VK_STATIC_VULKAN_FUNCTIONS is not defined, pFunctions must not be NULL.
     VkDevice hVkDevice;                                    ///< Handle to the VK device to use for the runtime. Must not
                                                            ///  be VK_NULL_HANDLE.
     VkPhysicalDevice hVkPhysicalDevice;                    ///< Handle to the VK physical device to use for the runtime.

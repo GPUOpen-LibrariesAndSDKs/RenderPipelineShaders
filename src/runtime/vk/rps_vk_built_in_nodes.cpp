@@ -38,6 +38,9 @@ namespace rps
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
+        auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
+        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
+
         RPS_ASSERT(pContext->numArgs > 1);
 
         static_assert(sizeof(RpsClearValue) == sizeof(VkClearColorValue),
@@ -63,7 +66,7 @@ namespace rps
         vkRange.baseArrayLayer          = pImageView->subresourceRange.baseArrayLayer;
         vkRange.layerCount              = pImageView->subresourceRange.arrayLayers;
 
-        vkCmdClearColorImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, pClearValue, 1, &vkRange);
+        pRuntimeDevice->GetFunctions().vkCmdClearColorImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, pClearValue, 1, &vkRange);
     }
 
     void VKBuiltInClearColorRegions(const RpsCmdCallbackContext* pContext)
@@ -79,6 +82,9 @@ namespace rps
     void VKBuiltInClearDepthStencil(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
+
+        auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
+        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
 
         RPS_ASSERT(pContext->numArgs > 1);
 
@@ -105,7 +111,7 @@ namespace rps
         vkRange.baseArrayLayer          = pImageView->subresourceRange.baseArrayLayer;
         vkRange.layerCount              = pImageView->subresourceRange.arrayLayers;
 
-        vkCmdClearDepthStencilImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &vkRange);
+        pRuntimeDevice->GetFunctions().vkCmdClearDepthStencilImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &vkRange);
     }
 
     void VKBuiltInClearDepthStencilRegions(const RpsCmdCallbackContext* pContext)
@@ -130,7 +136,6 @@ namespace rps
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
         auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
-
         auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
 
         RPS_ASSERT(pContext->numArgs == 5);
@@ -225,7 +230,7 @@ namespace rps
         const VkImage hDstResource = rpsVKImageFromHandle(pDstResource->hRuntimeResource);
         const VkImage hSrcResource = rpsVKImageFromHandle(pSrcResource->hRuntimeResource);
 
-        vkCmdCopyImage(hCmdBuf,
+        pRuntimeDevice->GetFunctions().vkCmdCopyImage(hCmdBuf,
                        hSrcResource,
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        hDstResource,
@@ -239,6 +244,7 @@ namespace rps
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
         auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
+        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
 
         const ResourceInstance *pDstResource, *pSrcResource;
         RPS_V_REPORT_AND_RETURN(pContext,
@@ -263,7 +269,7 @@ namespace rps
         copyInfo.dstOffset = dstOffset;
         copyInfo.size      = (copySize != UINT64_MAX) ? copySize : srcTotalSize;
 
-        vkCmdCopyBuffer(hCmdBuf, srcBuffer, dstBuffer, 1, &copyInfo);
+        pRuntimeDevice->GetFunctions().vkCmdCopyBuffer(hCmdBuf, srcBuffer, dstBuffer, 1, &copyInfo);
     }
 
     static constexpr bool TextureToBuffer = true;
@@ -337,11 +343,11 @@ namespace rps
 
         if (SourceIsTexture)
         {
-            vkCmdCopyImageToBuffer(hCmdBuf, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bufferHdl, 1, &copyInfos);
+            pRuntimeDevice->GetFunctions().vkCmdCopyImageToBuffer(hCmdBuf, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bufferHdl, 1, &copyInfos);
         }
         else
         {
-            vkCmdCopyBufferToImage(hCmdBuf, bufferHdl, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfos);
+            pRuntimeDevice->GetFunctions().vkCmdCopyBufferToImage(hCmdBuf, bufferHdl, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfos);
         }
     }
 
@@ -399,7 +405,6 @@ namespace rps
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
         auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
-
         auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
 
         RPS_ASSERT(pContext->numArgs == 6);
@@ -484,7 +489,7 @@ namespace rps
         const VkImage hDstResource = rpsVKImageFromHandle(pDstResource->hRuntimeResource);
         const VkImage hSrcResource = rpsVKImageFromHandle(pSrcResource->hRuntimeResource);
 
-        vkCmdResolveImage(hCmdBuf,
+        pRuntimeDevice->GetFunctions().vkCmdResolveImage(hCmdBuf,
                           hSrcResource,
                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                           hDstResource,

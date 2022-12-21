@@ -55,6 +55,11 @@ namespace rps
             return m_physicalDevice;
         }
 
+        const RpsVKFunctions& GetFunctions() const
+        {
+            return m_functions;
+        }
+
         const VkPhysicalDeviceProperties& GetPhysicalDeviceProperties() const
         {
             return m_deviceProperties;
@@ -81,6 +86,7 @@ namespace rps
     private:
         VkDevice         m_device         = VK_NULL_HANDLE;
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
+        RpsVKFunctions    m_functions      = {};
 
         RpsVKRuntimeFlags m_flags = RPS_VK_RUNTIME_FLAG_NONE;
 

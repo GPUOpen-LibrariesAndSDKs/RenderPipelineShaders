@@ -27,12 +27,49 @@ namespace rps
         , m_physicalDevice(pCreateInfo->hVkPhysicalDevice)
         , m_flags(pCreateInfo->flags)
     {
+#ifndef RPS_VK_DYNAMIC_VULKAN_FUNCTIONS
+        m_functions.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
+        m_functions.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
+        m_functions.vkCreateImage = vkCreateImage;
+        m_functions.vkDestroyImage = vkDestroyImage;
+        m_functions.vkBindImageMemory = vkBindImageMemory;
+        m_functions.vkGetImageMemoryRequirements = vkGetImageMemoryRequirements;
+        m_functions.vkCreateBuffer = vkCreateBuffer;
+        m_functions.vkDestroyBuffer = vkDestroyBuffer;
+        m_functions.vkBindBufferMemory = vkBindBufferMemory;
+        m_functions.vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements;
+        m_functions.vkCreateFramebuffer = vkCreateFramebuffer;
+        m_functions.vkDestroyFramebuffer = vkDestroyFramebuffer;
+        m_functions.vkCreateRenderPass = vkCreateRenderPass;
+        m_functions.vkDestroyRenderPass = vkDestroyRenderPass;
+        m_functions.vkCreateBufferView = vkCreateBufferView;
+        m_functions.vkDestroyBufferView = vkDestroyBufferView;
+        m_functions.vkCreateImageView = vkCreateImageView;
+        m_functions.vkDestroyImageView = vkDestroyImageView;
+        m_functions.vkAllocateMemory = vkAllocateMemory;
+        m_functions.vkFreeMemory = vkFreeMemory;
+        m_functions.vkCmdBeginRenderPass = vkCmdBeginRenderPass;
+        m_functions.vkCmdEndRenderPass = vkCmdEndRenderPass;
+        m_functions.vkCmdSetViewport = vkCmdSetViewport;
+        m_functions.vkCmdSetScissor = vkCmdSetScissor;
+        m_functions.vkCmdPipelineBarrier = vkCmdPipelineBarrier;
+        m_functions.vkCmdClearColorImage = vkCmdClearColorImage;
+        m_functions.vkCmdClearDepthStencilImage = vkCmdClearDepthStencilImage;
+        m_functions.vkCmdCopyImage = vkCmdCopyImage;
+        m_functions.vkCmdCopyBuffer = vkCmdCopyBuffer;
+        m_functions.vkCmdCopyImageToBuffer = vkCmdCopyImageToBuffer;
+        m_functions.vkCmdCopyBufferToImage = vkCmdCopyBufferToImage;
+        m_functions.vkCmdResolveImage = vkCmdResolveImage;
+#else
+        RPS_ASSERT(pCreateInfo->pVulkanFunctions);
+        m_functions = *pCreateInfo->pVulkanFunctions;
+#endif
     }
 
     RpsResult VKRuntimeDevice::Init()
     {
-        vkGetPhysicalDeviceProperties(m_physicalDevice, &m_deviceProperties);
-        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_deviceMemoryProperties);
+        m_functions.vkGetPhysicalDeviceProperties(m_physicalDevice, &m_deviceProperties);
+        m_functions.vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_deviceMemoryProperties);
 
         static_assert(VK_MAX_MEMORY_TYPES <= 32, "Bitwidth of m_hostVisibleMemoryTypeMask needs extending.");
 
@@ -311,10 +348,10 @@ namespace rps
                 GetVkImageCreateInfo(imgCI, resInstance);
 
                 VkImage hImage;
-                RPS_V_RETURN(VkResultToRps(vkCreateImage(m_device, &imgCI, nullptr, &hImage)));
+                RPS_V_RETURN(VkResultToRps(m_functions.vkCreateImage(m_device, &imgCI, nullptr, &hImage)));
 
                 allocInfo.hRuntimeResource = ToHandle(hImage);
-                vkGetImageMemoryRequirements(m_device, hImage, &allocInfo.memoryRequirements);
+                m_functions.vkGetImageMemoryRequirements(m_device, hImage, &allocInfo.memoryRequirements);
             }
             else if (resInstance.desc.IsBuffer())
             {
@@ -322,10 +359,10 @@ namespace rps
                 GetVkBufferCreateInfo(bufCI, resInstance);
 
                 VkBuffer hBuffer;
-                RPS_V_RETURN(VkResultToRps(vkCreateBuffer(m_device, &bufCI, nullptr, &hBuffer)));
+                RPS_V_RETURN(VkResultToRps(m_functions.vkCreateBuffer(m_device, &bufCI, nullptr, &hBuffer)));
 
                 allocInfo.hRuntimeResource = ToHandle(hBuffer);
-                vkGetBufferMemoryRequirements(m_device, hBuffer, &allocInfo.memoryRequirements);
+                m_functions.vkGetBufferMemoryRequirements(m_device, hBuffer, &allocInfo.memoryRequirements);
             }
         }
 
