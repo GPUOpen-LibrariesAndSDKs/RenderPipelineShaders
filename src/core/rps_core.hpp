@@ -15,12 +15,14 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <climits>
 
 #include <tuple>
 #include <memory>
 #include <algorithm>
 #include <type_traits>
+#include <vector>
 
 #ifdef RPS_HAS_INTRIN_H
 #include <intrin.h>

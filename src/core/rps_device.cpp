@@ -12,7 +12,7 @@ namespace rps
 {
     void* rpsDefaultMalloc(void* pContext, size_t size, size_t alignment)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_malloc(size, alignment);
 #else
         return aligned_alloc(alignment, rpsAlignUp(size, alignment));
@@ -21,7 +21,7 @@ namespace rps
 
     void rpsDefaultFree(void* pContext, void* ptr)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_free(ptr);
 #else
         return free(ptr);
@@ -65,7 +65,7 @@ namespace rps
 
     void* rpsDefaultRealloc(void* pContext, void* pOldBuffer, size_t oldSize, size_t newSize, size_t alignment)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_realloc(pOldBuffer, newSize, alignment);
 #else
         return rpsFallbackRealloc(&s_DefaultAllocator, pOldBuffer, oldSize, newSize, alignment);
