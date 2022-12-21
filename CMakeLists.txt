@@ -42,7 +42,7 @@ if ( "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "Arm64" )
 endif ( )
 
 if ( RpsEnableVulkan )
-    find_package( Vulkan )
+    find_package( Vulkan 1.2 )
 endif ( )
 
 if ( NOT WIN32 )

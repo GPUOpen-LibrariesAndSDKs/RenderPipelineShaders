@@ -1463,9 +1463,9 @@ private:
 
         findAndAddExt(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
         findAndAddExt(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
-//#ifndef VK_API_VERSION_1_3
+#ifdef VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
         findAndAddExt(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
-//#endif
+#endif
 
 #if defined(_WIN32)
         // Crate a Win32 Surface
@@ -1570,6 +1570,12 @@ private:
         physicalDeviceFeatures.multiViewport                  = VK_TRUE;
         physicalDeviceFeatures.sampleRateShading              = VK_TRUE;
 
+        VkPhysicalDeviceVulkan12Features vk12Features = {};
+        vk12Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        vk12Features.separateDepthStencilLayouts      = VK_TRUE;
+
+#ifdef VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+
 #ifdef VK_API_VERSION_1_3
         VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_feature = {};
         dynamic_rendering_feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
@@ -1578,11 +1584,9 @@ private:
         dynamic_rendering_feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
 #endif
         dynamic_rendering_feature.dynamicRendering = VK_TRUE;
+        vk12Features.pNext                         = &dynamic_rendering_feature;
 
-        VkPhysicalDeviceVulkan12Features vk12Features = {};
-        vk12Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        vk12Features.separateDepthStencilLayouts      = VK_TRUE;
-        vk12Features.pNext                            = &dynamic_rendering_feature;
+#endif
 
         VkDeviceCreateInfo device_info      = {};
         device_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

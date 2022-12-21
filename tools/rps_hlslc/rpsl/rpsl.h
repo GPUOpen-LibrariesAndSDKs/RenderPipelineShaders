@@ -559,7 +559,7 @@ typedef struct texture
     /// @returns                    The derived texture view.
     texture format(in uint viewFormat);
     /// Create a derived texture view with the given temporal layer for temporal textures.
-    /// 0 means current frame (default), 1 means one frame before, 2 means two frames, etc.
+    /// 0 means the current frame (default), 1 means the previous frame, 2 means two frames before, etc.
     ///
     /// @param temporalLayer        The temporal layer.
     /// 
@@ -626,7 +626,7 @@ typedef struct buffer {
     /// The derived buffer view.
     buffer elements(in uint64_t firstElement, in uint64_t elementCount);
     /// Create a derived buffer view with the given temporal layer for temporal buffers.
-    /// 0 means current frame (default), 1 means one frame before, 2 means two frames, etc.
+    /// 0 means the current frame (default), 1 means the previous frame, 2 means two frames before, etc.
     ///
     /// @param temporalLayer        The temporal layer.
     /// 

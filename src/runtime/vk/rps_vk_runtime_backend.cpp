@@ -73,14 +73,6 @@ namespace rps
         }
     };
 
-    struct VKAccessInfo2
-    {
-        VkPipelineStageFlags2 stages;
-        VkAccessFlags2        access;
-        VkImageLayout         imgLayout;
-        uint32_t              queueFamilyIndex;
-    };
-
     static inline VkPipelineStageFlags GetVkPipelineStagesForShaderStages(RpsShaderStageFlags stages)
     {
         static constexpr struct
@@ -99,7 +91,7 @@ namespace rps
             {VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV, RPS_SHADER_STAGE_MS},
         };
 
-        VkPipelineStageFlags vkFlags = VK_PIPELINE_STAGE_NONE;
+        VkPipelineStageFlags vkFlags = VkPipelineStageFlags{0};
 
         for (auto iter = std::begin(stageMap); iter != std::end(stageMap); ++iter)
         {
@@ -223,7 +215,7 @@ namespace rps
             {RPS_ACCESS_COPY_SRC_BIT | RPS_ACCESS_RESOLVE_SRC_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
             {RPS_ACCESS_SHADING_RATE_BIT,       VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR, VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR},
             {RPS_ACCESS_RAYTRACING_AS_BUILD_BIT, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR, VK_IMAGE_LAYOUT_UNDEFINED},
-            {RPS_ACCESS_PRESENT_BIT,            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,   VK_ACCESS_NONE,                         bIsSrc ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
+            {RPS_ACCESS_PRESENT_BIT,            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,   VkAccessFlags{0},                       bIsSrc ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
             {RPS_ACCESS_CPU_READ_BIT,           VK_PIPELINE_STAGE_HOST_BIT,             VK_ACCESS_HOST_READ_BIT,                VK_IMAGE_LAYOUT_UNDEFINED},
         };
         // clang-format on

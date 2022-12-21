@@ -331,7 +331,7 @@ namespace rps
             ID3D11UnorderedAccessView* operator()(const RpsCmdCallbackContext* pContext)
             {
                 ID3D11UnorderedAccessView* pUAV;
-                RpsResult                  result = rpsD3D11GetCmdArgUAV(pContext, Index, &resource);
+                RpsResult                  result = rpsD3D11GetCmdArgUAV(pContext, Index, &pUAV);
                 if (RPS_FAILED(result))
                 {
                     rpsCmdCallbackReportError(pContext, result);

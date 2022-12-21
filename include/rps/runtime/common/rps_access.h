@@ -310,7 +310,8 @@ typedef struct RpsResourceView
                                ///  resource view.
     RpsFormat viewFormat;      ///< Format of the view. RPS_FORMAT_UNKNOWN indicates the format should be inherited from
                                ///  the resource or the view does not require a format (e.g. structured buffers).
-    uint32_t             temporalLayer;  ///< Temporal layer of the view.
+    uint32_t             temporalLayer;  ///< Temporal layer of the view. 0 means the current frame,
+                                         ///  1 means the previous frame, 2 means two frames before, etc.
     RpsResourceViewFlags flags;          ///< Flags for additional view properties.
 } RpsResourceView;
 

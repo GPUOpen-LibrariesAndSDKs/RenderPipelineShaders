@@ -36,6 +36,11 @@ Notable directories and files of the SDK:
 - OS: Windows 10 21H2 or later.
 - Compiler: A C++11 compliant compiler. Tested compilers include Visual C++ toolset v141 or later (VS2017+) and Clang 15.0.1.
 - CMake: CMake 3.12.1 or later.
+- Vulkan SDK 1.2.162.1 or later (If the Vulkan backend and its dependents are desired).
+
+### Submodule dependencies
+
+The SDK has [catch2](https://github.com/catchorg/Catch2.git) and [imgui](https://github.com/ocornut/imgui.git) as external git submodule dependencies. If you didn't initially clone with `--recursive` or another method that fetches the submodule dependencies automatically, please `git submodule init` and `git submodule update` inside the SDK clone directory to fetch them before attempting to build.
 
 ### Build
 The SDK uses CMake. There are a few ways to start:
