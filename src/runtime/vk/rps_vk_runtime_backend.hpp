@@ -199,36 +199,36 @@ namespace rps
                 pendingBuffers.reset(&arena);
             }
 
-            void DestroyDeviceResources(VkDevice hDevice)
+            void DestroyDeviceResources(VkDevice hDevice, const RpsVKFunctions& functions)
             {
                 for (VkFramebuffer fb : frameBuffers)
                 {
-                    vkDestroyFramebuffer(hDevice, fb, nullptr);
+                    functions.vkDestroyFramebuffer(hDevice, fb, nullptr);
                 }
 
                 for (VkRenderPass rp : renderPasses)
                 {
-                    vkDestroyRenderPass(hDevice, rp, nullptr);
+                    functions.vkDestroyRenderPass(hDevice, rp, nullptr);
                 }
 
                 for (VkBufferView bufView : bufferViews)
                 {
-                    vkDestroyBufferView(hDevice, bufView, nullptr);
+                    functions.vkDestroyBufferView(hDevice, bufView, nullptr);
                 }
 
                 for (VkImageView imgView : imageViews)
                 {
-                    vkDestroyImageView(hDevice, imgView, nullptr);
+                    functions.vkDestroyImageView(hDevice, imgView, nullptr);
                 }
 
                 for (VkBuffer buf : pendingBuffers)
                 {
-                    vkDestroyBuffer(hDevice, buf, nullptr);
+                    functions.vkDestroyBuffer(hDevice, buf, nullptr);
                 }
 
                 for (VkImage img : pendingImages)
                 {
-                    vkDestroyImage(hDevice, img, nullptr);
+                    functions.vkDestroyImage(hDevice, img, nullptr);
                 }
 
                 pendingImages.clear();

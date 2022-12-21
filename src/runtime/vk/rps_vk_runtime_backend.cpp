@@ -261,7 +261,7 @@ namespace rps
     {
         for (auto& frameResource : m_frameResources)
         {
-            frameResource.DestroyDeviceResources(m_device.GetVkDevice());
+            frameResource.DestroyDeviceResources(m_device.GetVkDevice(), m_device.GetFunctions());
         }
 
         m_frameResources.clear();
@@ -284,7 +284,7 @@ namespace rps
         else
         {
             // TODO - Recycle
-            m_frameResources[m_currentResourceFrame].DestroyDeviceResources(m_device.GetVkDevice());
+            m_frameResources[m_currentResourceFrame].DestroyDeviceResources(m_device.GetVkDevice(), m_device.GetFunctions());
 
             std::swap(m_pendingReleaseImages, m_frameResources[m_currentResourceFrame].pendingImages);
             std::swap(m_pendingReleaseBuffers, m_frameResources[m_currentResourceFrame].pendingBuffers);
@@ -318,7 +318,7 @@ namespace rps
             memAllocInfo.allocationSize       = heapInfo.size;
 
             VkDeviceMemory hMemory;
-            RPS_V_RETURN(VkResultToRps(vkAllocateMemory(hVkDevice, &memAllocInfo, nullptr, &hMemory)));
+            RPS_V_RETURN(VkResultToRps(m_device.GetFunctions().vkAllocateMemory(hVkDevice, &memAllocInfo, nullptr, &hMemory)));
 
             heapInfo.hRuntimeHeap = {hMemory};
         }
@@ -337,7 +337,7 @@ namespace rps
                 VkDeviceMemory hMemory = rpsVKMemoryFromHandle(heapInfo.hRuntimeHeap);
                 heapInfo.hRuntimeHeap  = {};
 
-                vkFreeMemory(hVkDevice, hMemory, nullptr);
+                m_device.GetFunctions().vkFreeMemory(hVkDevice, hMemory, nullptr);
             }
         }
     }
@@ -382,7 +382,7 @@ namespace rps
                         auto pMemory = rpsVKMemoryFromHandle(heaps[resInfo.allocPlacement.heapId].hRuntimeHeap);
                         if (resInfo.desc.IsImage())
                         {
-                            RPS_V_RETURN(VkResultToRps(vkBindImageMemory(hVkDevice,
+                            RPS_V_RETURN(VkResultToRps(m_device.GetFunctions().vkBindImageMemory(hVkDevice,
                                                                          rpsVKImageFromHandle(resInfo.hRuntimeResource),
                                                                          pMemory,
                                                                          resInfo.allocPlacement.offset)));
@@ -390,7 +390,7 @@ namespace rps
                         else
                         {
                             RPS_V_RETURN(
-                                VkResultToRps(vkBindBufferMemory(hVkDevice,
+                                VkResultToRps(m_device.GetFunctions().vkBindBufferMemory(hVkDevice,
                                                                  rpsVKBufferFromHandle(resInfo.hRuntimeResource),
                                                                  pMemory,
                                                                  resInfo.allocPlacement.offset)));
@@ -421,12 +421,12 @@ namespace rps
                 if (resInfo.desc.IsImage())
                 {
                     VkImage hImage = rpsVKImageFromHandle(resInfo.hRuntimeResource);
-                    vkDestroyImage(hVkDevice, hImage, nullptr);
+                    m_device.GetFunctions().vkDestroyImage(hVkDevice, hImage, nullptr);
                 }
                 else
                 {
                     VkBuffer hBuffer = rpsVKBufferFromHandle(resInfo.hRuntimeResource);
-                    vkDestroyBuffer(hVkDevice, hBuffer, nullptr);
+                    m_device.GetFunctions().vkDestroyBuffer(hVkDevice, hBuffer, nullptr);
                 }
             }
         }
@@ -645,7 +645,7 @@ namespace rps
             const VkSubpassContents subpassContent =
                 bToExecSecondaryCmdBuf ? VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS : VK_SUBPASS_CONTENTS_INLINE;
 
-            vkCmdBeginRenderPass(hVkCmdBuf, &rpBegin, subpassContent);
+            m_device.GetFunctions().vkCmdBeginRenderPass(hVkCmdBuf, &rpBegin, subpassContent);
         }
 
         // Setup Viewport / Scissor states
@@ -681,8 +681,8 @@ namespace rps
                 pViewports = viewports;
             }
 
-            vkCmdSetViewport(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numViewports, pViewports);
-            vkCmdSetScissor(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numScissorRects, pScissorRects);
+            m_device.GetFunctions().vkCmdSetViewport(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numViewports, pViewports);
+            m_device.GetFunctions().vkCmdSetScissor(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numScissorRects, pScissorRects);
         }
 
         return RPS_OK;
@@ -710,7 +710,7 @@ namespace rps
 
         if (bEndVKRenderPass)
         {
-            vkCmdEndRenderPass(GetContextVkCmdBuf(context));
+            m_device.GetFunctions().vkCmdEndRenderPass(GetContextVkCmdBuf(context));
         }
 
         return RPS_OK;
@@ -823,6 +823,7 @@ namespace rps
     }
 
     RpsResult CreateImageView(VkDevice                hDevice,
+                              const RpsVKFunctions&   functions,
                               VkImage                 hImage,
                               const ResourceInstance& resInfo,
                               const CmdAccessInfo&    accessInfo,
@@ -842,10 +843,11 @@ namespace rps
         GetVkComponentMapping(vkCreateInfo.components, pImgViewInfo->componentMapping);
         GetVkSubresourceRange(vkCreateInfo.subresourceRange, accessInfo.range);
 
-        return VkResultToRps(vkCreateImageView(hDevice, &vkCreateInfo, nullptr, &dstImgView));
+        return VkResultToRps(functions.vkCreateImageView(hDevice, &vkCreateInfo, nullptr, &dstImgView));
     }
 
     RpsResult CreateBufferView(VkDevice                hDevice,
+                               const RpsVKFunctions&   functions,
                                VkBuffer                hBuffer,
                                const ResourceInstance& resInfo,
                                const CmdAccessInfo&    accessInfo,
@@ -865,7 +867,7 @@ namespace rps
         vkCreateInfo.range =
             (pBufViewInfo->sizeInBytes == RPS_BUFFER_WHOLE_SIZE) ? VK_WHOLE_SIZE : pBufViewInfo->sizeInBytes;
 
-        return VkResultToRps(vkCreateBufferView(hDevice, &vkCreateInfo, nullptr, &dstBufView));
+        return VkResultToRps(functions.vkCreateBufferView(hDevice, &vkCreateInfo, nullptr, &dstBufView));
     }
 
     RpsResult VKRuntimeBackend::CreateImageViews(const RenderGraphUpdateContext& context,
@@ -895,7 +897,7 @@ namespace rps
             m_imageViewLayouts[imgViewIndex] = GetTrackedImageLayoutInfo(resource, access);
 
             VkImageView& hImgView = currResources.imageViews[imgViewIndex];
-            RPS_V_RETURN(CreateImageView(hVkDevice, hImage, resource, access, hImgView));
+            RPS_V_RETURN(CreateImageView(hVkDevice, m_device.GetFunctions(), hImage, resource, access, hImgView));
 
             m_accessToDescriptorMap[accessIndex] = imgViewIndex;
 
@@ -928,7 +930,7 @@ namespace rps
             FromHandle(hBuffer, resource.hRuntimeResource);
 
             VkBufferView& hBufView = currResources.bufferViews[bufViewIndex];
-            RPS_V_RETURN(CreateBufferView(hVkDevice, hBuffer, resource, access, hBufView));
+            RPS_V_RETURN(CreateBufferView(hVkDevice, m_device.GetFunctions(), hBuffer, resource, access, hBufView));
 
             m_accessToDescriptorMap[accessIndex] = bufViewIndex;
 
@@ -1197,7 +1199,7 @@ namespace rps
             rpInfo.pDependencies   = nullptr;
 
             auto pVkRP = &currResources.renderPasses[rpIndex];
-            RPS_V_RETURN(VkResultToRps(vkCreateRenderPass(hVkDevice, &rpInfo, nullptr, pVkRP)));
+            RPS_V_RETURN(VkResultToRps(m_device.GetFunctions().vkCreateRenderPass(hVkDevice, &rpInfo, nullptr, pVkRP)));
 
             RPS_ASSERT(pCmdInfo->pRenderPassInfo);
             auto& cmdRPInfo = *pCmdInfo->pRenderPassInfo;
@@ -1211,7 +1213,7 @@ namespace rps
             fbInfo.layers                  = 1;  // TODO
 
             auto pVkFB = &currResources.frameBuffers[rpIndex];
-            RPS_V_RETURN(VkResultToRps(vkCreateFramebuffer(hVkDevice, &fbInfo, nullptr, pVkFB)));  // TODO
+            RPS_V_RETURN(VkResultToRps(m_device.GetFunctions().vkCreateFramebuffer(hVkDevice, &fbInfo, nullptr, pVkFB)));  // TODO
 
             if (clearValueCount > 0)
             {
@@ -1495,7 +1497,7 @@ namespace rps
     {
         const auto& batch = m_barrierBatches[barrierBatch];
 
-        vkCmdPipelineBarrier(hCmdBuf,
+        m_device.GetFunctions().vkCmdPipelineBarrier(hCmdBuf,
                              batch.srcStage,
                              batch.dstStage,
                              VK_DEPENDENCY_BY_REGION_BIT,
