@@ -29,12 +29,12 @@ namespace rps
 
     static void OverlayImGuiCbReadLine(ImGuiContext* ctx, ImGuiSettingsHandler* pHandler, void* entry, const char* line)
     {
-        if (pHandler == nullptr)
+        if ((line == nullptr) || (pHandler == nullptr))
             return;
 
         const size_t  nameLen       = strlen(line);
         DrawSettings* pDrawSettings = static_cast<DrawSettings*>(pHandler->UserData);
-        if ((line == nullptr) || (nameLen == 0))
+        if (nameLen == 0)
         {
             return;
         }
