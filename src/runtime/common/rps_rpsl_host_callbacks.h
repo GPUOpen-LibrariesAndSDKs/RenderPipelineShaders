@@ -5,8 +5,8 @@
 //
 // See file LICENSE.RTF for full license details.
 
-#ifndef _RPS_RPSL_HOST_H_
-#define _RPS_RPSL_HOST_H_
+#ifndef _RPS_RPSL_HOST_CALLBACKS_H_
+#define _RPS_RPSL_HOST_CALLBACKS_H_
 
 /// @brief Bitflags for the type of entry calls.
 enum RpslEntryCallFlagBits

@@ -10,7 +10,7 @@
 
 #include "rps/core/rps_api.h"
 
-#include "runtime/common/rps_rpsl_host.h"
+#include "runtime/common/rps_rpsl_host_callbacks.h"
 
 extern RpsResult RpslHostBlockMarker(uint32_t markerType,
                                      uint32_t blockIndex,

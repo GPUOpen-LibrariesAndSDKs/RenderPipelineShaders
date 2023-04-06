@@ -14,7 +14,7 @@
 #include "core/rps_core.hpp"
 #include "core/rps_persistent_index_generator.hpp"
 #include "runtime/common/rps_cmd_buf.hpp"
-#include "runtime/common/rps_rpsl_host.h"
+#include "runtime/common/rps_rpsl_host_callbacks.h"
 
 namespace rps
 {
