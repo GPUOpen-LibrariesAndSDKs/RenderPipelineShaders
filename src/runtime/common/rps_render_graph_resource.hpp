@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_RENDER_GRAPH_RESOURCE_H
-#define RPS_RENDER_GRAPH_RESOURCE_H
+#ifndef RPS_RENDER_GRAPH_RESOURCE_HPP
+#define RPS_RENDER_GRAPH_RESOURCE_HPP
 
 #include "core/rps_core.hpp"
 #include "core/rps_util.hpp"
@@ -65,12 +65,12 @@ namespace rps
             temporalLayers = (desc.temporalLayers == 0) ? 1 : desc.temporalLayers;
             flags          = desc.flags;
 
-            if (desc.type == RPS_RESOURCE_TYPE_BUFFER)
+            if (IsBuffer())
             {
                 buffer.sizeInBytesLo = desc.buffer.sizeInBytesLo;
                 buffer.sizeInBytesHi = desc.buffer.sizeInBytesHi;
             }
-            else
+            else if (IsImage())
             {
                 image.width  = desc.image.width;
                 image.height = desc.image.height;
@@ -87,6 +87,11 @@ namespace rps
                 image.mipLevels   = desc.image.mipLevels;
                 image.format      = desc.image.format;
                 image.sampleCount = desc.image.sampleCount;
+            }
+            else
+            {
+                // Clear the slot when it becomes inactive.
+                *this = ResourceDescPacked();
             }
         }
 
@@ -107,13 +112,12 @@ namespace rps
 
         bool IsBuffer() const
         {
-            return type == RPS_RESOURCE_TYPE_BUFFER;
+            return ResourceDesc::IsBuffer(type);
         }
 
         bool IsImage() const
         {
-            return (type == RPS_RESOURCE_TYPE_IMAGE_1D) || (type == RPS_RESOURCE_TYPE_IMAGE_2D) ||
-                   (type == RPS_RESOURCE_TYPE_IMAGE_3D);
+            return ResourceDesc::IsImage(type);
         }
 
         uint64_t GetBufferSize() const
@@ -156,12 +160,12 @@ namespace rps
             unpacked.temporalLayers = temporalLayers;
             unpacked.flags          = flags;
 
-            if (type == RPS_RESOURCE_TYPE_BUFFER)
+            if (IsBuffer())
             {
                 unpacked.buffer.sizeInBytesLo = buffer.sizeInBytesLo;
                 unpacked.buffer.sizeInBytesHi = buffer.sizeInBytesHi;
             }
-            else
+            else if(IsImage())
             {
                 unpacked.image.width  = image.width;
                 unpacked.image.height = image.height;
@@ -452,4 +456,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //RPS_RENDER_GRAPH_RESOURCE_H
+#endif  //RPS_RENDER_GRAPH_RESOURCE_HPP

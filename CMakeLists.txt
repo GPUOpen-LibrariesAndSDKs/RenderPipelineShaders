@@ -1,17 +1,19 @@
-# Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is part of the AMD Render Pipeline Shaders SDK which is
 # released under the AMD INTERNAL EVALUATION LICENSE.
 #
-# See file LICENSE.RTF for full license details.
+# See file LICENSE.txt for full license details.
 
 cmake_minimum_required(VERSION 3.12.1)
 
 option( RpsBuildTests "Enable unit test targets" ON )
 option( RpsBuildTools "Enable tool targets" ON )
+option( RpsBuildExamples "Enable example targets" ON )
 option( RpsEnableVulkan "Enable Vulkan backend" ON )
 option( RpsEnableImGui "Enable ImGui" ON)
 option( RpsEnableDXAgilitySDK "Enable DX12 Agility SDK" OFF )
+option( RpsEnableDefaultDeviceImpl "Enable default allocator & printer support" ON )
 
 if ( "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "" )
     project( "rps" )
@@ -21,24 +23,21 @@ else ( )
 endif ( )
 
 set( NugetPackagesRoot "${CMAKE_BINARY_DIR}/rps_nuget_packages" )
-set( DXAgilitySDK_VERSION_STRING "1.706.3-preview" )
-set( DXAgilitySDK_VERSION 706 ) # to set D3D12SDKVersion
+set( DXAgilitySDK_VERSION_STRING "1.608.3" )
+set( DXAgilitySDK_VERSION 608 ) # to set D3D12SDKVersion
 set( DXAgilitySDK_INSTALL_DIR "${NugetPackagesRoot}/DXAgilitySDK.${DXAgilitySDK_VERSION_STRING}" )
 set( RpsDXAgilitySDK_DIR "${DXAgilitySDK_INSTALL_DIR}" CACHE STRING "DX12 Agility SDK directory" )
 
 set( RpsRootSolutionFolder "" CACHE STRING "Root IDE solution folder" )
 set( RpsImGui_DIR "${PROJECT_SOURCE_DIR}/external/imgui" CACHE STRING "ImGui source directory" )
-
-function( BuildFolderProperty RelativeFolder OutputVar )
-    if ( "${RpsRootSolutionFolder}" STREQUAL "" )
-        set(${OutputVar} "${RelativeFolder}" PARENT_SCOPE)
-    else()
-        set(${OutputVar} "${RpsRootSolutionFolder}/${RelativeFolder}" PARENT_SCOPE)
-    endif()
-endfunction()
+set( RpsDXC_DIR "" CACHE STRING "The specified directory is expected to contain dxcompiler.dll and dxil.dll" )
 
 if ( "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "Arm64" )
     set( RpsEnableVulkan OFF )
+endif ( )
+
+if ( ${CMAKE_SYSTEM_NAME} MATCHES "Linux" )
+    set( RpsOsLinux TRUE )
 endif ( )
 
 if ( RpsEnableVulkan )
@@ -46,12 +45,20 @@ if ( RpsEnableVulkan )
 endif ( )
 
 if ( NOT WIN32 )
-    set ( RpsEnableDXAgilitySDK OFF )
+    set( RpsEnableDXAgilitySDK OFF )
 endif()
+
+if ( CMAKE_SIZEOF_VOID_P EQUAL 8 )
+    set( RPS_X64 ON )
+elseif ( CMAKE_SIZEOF_VOID_P EQUAL 4 )
+    set( RPS_X86 ON)
+endif()
+
+include( tools/utils.cmake )
 
 # JIT only supports win64 for now
 set ( RpsJITSupported FALSE )
-if ( WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8) )
+if ( WIN32 AND RPS_X64 )
     set ( RpsJITSupported TRUE )
 endif ( )
 
@@ -88,7 +95,7 @@ if ( RpsEnableDXAgilitySDK )
 
         # download agility sdk.
         if ( PING_STATUS GREATER 0 )
-            set ( RpsEnableDXAgilitySDK OFF )
+            set ( RpsEnableDXAgilitySDK OFF ) # NOTE: this shadows cache var.
             message( WARNING "Cannot download DXAgilitySDK as no internet connection. Unsetting RpsEnableDXAgilitySDK." )
         else()
             set( DXAgilitySDK_DOWNLOAD_URL "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/${DXAgilitySDK_VERSION_STRING}" )
@@ -111,7 +118,7 @@ if ( RpsEnableDXAgilitySDK )
                 message( STATUS "Successfully installed DXAgilitySDK to ${DXAgilitySDK_INSTALL_DIR}" )
                 message( STATUS "DX12AgilitySDK_INCLUDE_DIR = ${DX12AgilitySDK_INCLUDE_DIR}")
             else()
-                set ( RpsEnableDXAgilitySDK OFF )
+                set ( RpsEnableDXAgilitySDK OFF ) # NOTE: this shadows cache var.
                 message( WARNING "Unsetting RpsEnableDXAgilitySDK. DXAgilitySDK install failed with: ${DX12AgilitySDK_ERROR}" )
             endif()
         endif()
@@ -141,16 +148,20 @@ if ( RpsEnableImGui AND (CMAKE_SIZEOF_VOID_P LESS 8) )
     add_definitions( -DImTextureID=ImU64 )
 endif( )
 
-include(CheckIncludeFiles)
+if ( NOT RpsEnableDefaultDeviceImpl )
+    add_definitions( -DRPS_ENABLE_DEFAULT_DEVICE_IMPL=0 )
+endif( )
+
+include( CheckIncludeFiles )
 
 function( CheckIncludeFilesAndAddDefinition IncludeFileName DefinitionName )
-    check_include_files( ${IncludeFileName} IncludeFileFound)
+    check_include_files( ${IncludeFileName} IncludeFileFound )
     if ( ${IncludeFileFound} )
         add_definitions( -D${DefinitionName} )
     endif( )
 endfunction( )
 
-CheckIncludeFilesAndAddDefinition(intrin.h RPS_HAS_INTRIN_H)
+CheckIncludeFilesAndAddDefinition( intrin.h RPS_HAS_INTRIN_H )
 
 function( TryCompileFileAndAddDefinition TryCompileFileName DefinitionName )
     try_compile( TryCompileSucceeded ${CMAKE_CURRENT_BINARY_DIR}/cmake_try_compile ${CMAKE_CURRENT_SOURCE_DIR}/tools/cmake_tests/${TryCompileFileName} )
@@ -172,22 +183,40 @@ if ( RpsBuildTests )
 endif ( )
 
 # Compile RPSL
-function( CompileRpslDxc TargetName RpslFileName GeneratedSources OutDirPrefix )
+
+if ( WIN32 OR RpsOsLinux )
+    set( RpsOsSupportsRpslCompiler TRUE )
+endif ( )
+
+function( CompileRpslDxc TargetName RpslFileName GeneratedSource OutDirPrefix )
     get_filename_component( FileNameWithoutExtension ${RpslFileName} NAME_WE )
-    set( OutDirectory "${CMAKE_CURRENT_BINARY_DIR}/${TargetName}/${OutDirPrefix}/" )
+    set( OutDirectory "${CMAKE_CURRENT_BINARY_DIR}/${TargetName}.tmp/${OutDirPrefix}/" )
     # message( STATUS "Rps-hlslc Output Dir: " ${OutDirectory} )
     # message( STATUS "Working dir: " ${OutDirectory} )
     set( OutputSource ${OutDirectory}${FileNameWithoutExtension}.rpsl.g.c )
     string( APPEND RpsCompileOpts
         "$<IF:$<CONFIG:DEBUG>,-O0,-O3>")
+    if ( WIN32 )
+        set( RpsCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/win-x64/" )
+        set( RpsHlslcDxcompilerLib "${RpsCompilerBinaryDir}/dxcompiler.dll" )
+        set( ExecPostfix ".exe" )
+    elseif ( RpsOsLinux )
+        set( RpsCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/linux-x64/bin" )
+        set( RpsHlslcDxcompilerLib "${RpsCompilerBinaryDir}/../lib/libdxcompiler.so" )
+    else ( )
+        message( SEND_ERROR "Unsupported OS" )
+    endif ( )
+    set( RpsHlslcExec "${RpsCompilerBinaryDir}/rps-hlslc${ExecPostfix}" )
+    set( RpsLlvmCbeExec "${RpsCompilerBinaryDir}/llvm-cbe${ExecPostfix}" )
+    file( MAKE_DIRECTORY ${OutDirectory} )
     add_custom_command(
         OUTPUT ${OutputSource}
-        COMMAND "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/rps-hlslc.exe" "${RpslFileName}" -od "${OutDirectory}" -m ${FileNameWithoutExtension} ${RpsCompileOpts}
-        COMMAND ${CMAKE_COMMAND} -E echo "Compiling RPSL ${RpslFileName} : '${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/rps-hlslc.exe ${RpslFileName} -od ${OutDirectory} -m ${FileNameWithoutExtension} ${RpsCompileOpts}'"
+        COMMAND "${RpsHlslcExec}" "${RpslFileName}" -od "${OutDirectory}" -m ${FileNameWithoutExtension} ${RpsCompileOpts}
+        COMMAND ${CMAKE_COMMAND} -E echo "Compiling RPSL ${RpslFileName} : '${RpsHlslcExec} ${RpslFileName} -od ${OutDirectory} -m ${FileNameWithoutExtension} ${RpsCompileOpts}'"
         WORKING_DIRECTORY ${OutDirectory}
-        DEPENDS ${RpslFileName} "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/rps-hlslc.exe" "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/dxcompiler.dll" "${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/llvm-cbe.exe"
+        DEPENDS ${RpslFileName} "${RpsHlslcExec}" "${RpsHlslcDxcompilerLib}" "${RpsLlvmCbeExec}"
         VERBATIM )
-    set( GeneratedSources "${GeneratedSources}" "${OutputSource}" PARENT_SCOPE )
+    set( ${GeneratedSource} "${OutputSource}" PARENT_SCOPE )
 endfunction()
 
 # Copy assets
@@ -199,58 +228,82 @@ function( CopyShaders TargetName ShaderFiles SrcFolder )
     endforeach()
 endfunction()
 
-function( CopyDXC TargetName )
-    #x64 only for now
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        add_custom_command(
-            TARGET ${TargetName} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${PROJECT_SOURCE_DIR}/external/dxc/x64/dxil.dll
-            $<TARGET_FILE_DIR:${TargetName}>)
-        add_custom_command(
-            TARGET ${TargetName} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/dxcompiler.dll
-            $<TARGET_FILE_DIR:${TargetName}>)
-    endif()
+FindSpirvTools( SPIRV_DXCOMPILER_DLL )
+CheckFindFile( SPIRV_DXCOMPILER_DLL ${SPIRV_DXCOMPILER_DLL} )
+
+function( CopySpirvDXC TargetName )
+    add_custom_command(
+        TARGET ${TargetName} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${SPIRV_DXCOMPILER_DLL}
+        $<TARGET_FILE_DIR:${TargetName}>/spirv_dxc/dxcompiler.dll)
 endfunction()
 
-function( CopyJITCompiler TargetName )
-    #x64 only for now
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        add_custom_command(
-            TARGET ${TargetName} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/rps-jit.dll
-            $<TARGET_FILE_DIR:${TargetName}>)
-        # TODO: For now we need rps-hlslc.exe to compile rpsl to bitcode.
-        # Should allow dxcompiler.dll handle this.
-        add_custom_command(
-            TARGET ${TargetName} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/bin/rps-hlslc.exe
-            $<TARGET_FILE_DIR:${TargetName}>)
-        CopyDXC( ${TargetName} )
-    endif()
-endfunction()
+if ( WIN32 )
 
-function( CopyDX12AgilitySDKBinaries TargetName )
-    if (RpsEnableDXAgilitySDK)
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-            set( AgilitySDKPlatformName x64 )
-        endif()
-        foreach(BinaryToCopy D3D12Core.dll D3D12SDKLayers.dll)
+    FindDXC( DXCOMPILER_DLL DXIL_DLL )
+    CheckFindFile( DXCOMPILER_DLL ${DXCOMPILER_DLL} )
+    CheckFindFile( DXIL_DLL ${DXIL_DLL} )
+
+    function( CopyDXC TargetName )
+        add_custom_command(
+            TARGET ${TargetName} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${DXCOMPILER_DLL}
+            $<TARGET_FILE_DIR:${TargetName}>)
+        add_custom_command(
+            TARGET ${TargetName} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${DXIL_DLL}
+            $<TARGET_FILE_DIR:${TargetName}>)
+    endfunction()
+
+    function( CopyJITCompiler TargetName )
+        #x64 only for now
+        if( RPS_X64 )
             add_custom_command(
                 TARGET ${TargetName} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${DX12AgilitySDK_DIR}/bin/${AgilitySDKPlatformName}/${BinaryToCopy}
-                $<TARGET_FILE_DIR:${TargetName}>/D3D12/${BinaryToCopy} )
-        endforeach()
-    endif()
-endfunction()
+                ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/win-x64/rps-jit.dll
+                $<TARGET_FILE_DIR:${TargetName}>)
+            # TODO: For now we need rps-hlslc.exe to compile rpsl to bitcode.
+            # Should allow dxcompiler.dll handle this.
+            add_custom_command(
+                TARGET ${TargetName} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/win-x64/rps-hlslc.exe
+                $<TARGET_FILE_DIR:${TargetName}>/rps_hlslc/rps-hlslc.exe)
+            add_custom_command(
+                TARGET ${TargetName} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${PROJECT_SOURCE_DIR}/tools/rps_hlslc/win-x64/dxcompiler.dll
+                $<TARGET_FILE_DIR:${TargetName}>/rps_hlslc/dxcompiler.dll)
+            # ensures dxil.dll is present.
+            CopyDXC( ${TargetName} )
+        endif()
+    endfunction()
+
+    function( CopyDX12AgilitySDKBinaries TargetName )
+        if ( RpsEnableDXAgilitySDK )
+            if( RPS_X64 )
+                set( AgilitySDKPlatformName x64 )
+            elseif( RPS_X86 )
+                set( AgilitySDKPlatformName win32 )
+            endif()
+            foreach( BinaryToCopy D3D12Core.dll D3D12SDKLayers.dll )
+                add_custom_command(
+                    TARGET ${TargetName} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${DX12AgilitySDK_DIR}/bin/${AgilitySDKPlatformName}/${BinaryToCopy}
+                    $<TARGET_FILE_DIR:${TargetName}>/D3D12/${BinaryToCopy} )
+            endforeach()
+        endif()
+    endfunction()
+
+endif() # end if ( WIN32 )
 
 # Adding a library module from the ./src/${ModuleName} folder
-function( AddModule ModuleName ModuleFolder SrcFolder SrcInclude CompileFlags LibType LinkLibs )
+function( AddModule ModuleName ModuleFolder SrcFolder SrcInclude CompileFlags CompileDefinitions LibType LinkLibs )
     file( GLOB_RECURSE HeaderFiles
         "${ModuleFolder}/*.h"
         "${ModuleFolder}/*.hpp"
@@ -267,6 +320,10 @@ function( AddModule ModuleName ModuleFolder SrcFolder SrcInclude CompileFlags Li
         set(ModuleName ${ModuleName}.headers)
         add_custom_target( ${ModuleName} SOURCES ${HeaderFiles} )
     endif ( )
+    
+    if( CompileDefinitions )
+        set_target_properties( ${ModuleName} PROPERTIES COMPILE_DEFINITIONS "${CompileDefinitions}")
+    endif( )
 
     if ( CompileFlags )
         set_target_properties( ${ModuleName} PROPERTIES COMPILE_FLAGS "${CompileFlags}")
@@ -337,7 +394,7 @@ function( AddCppApp AppName AppFolder SrcFolder SrcSharedFolder SrcInclude Compi
 
     if ( SrcSharedFolder )
         file( GLOB_RECURSE SourceSharedFiles
-            "${SrcSharedFolder}/*.h" )
+            "${SrcSharedFolder}/*_shared.hpp" )
         source_group( TREE "${SrcSharedFolder}/" PREFIX "shared" FILES ${SourceSharedFiles} )
 
         if ( ${AppName} MATCHES "rpsl" )
@@ -349,7 +406,8 @@ function( AddCppApp AppName AppFolder SrcFolder SrcSharedFolder SrcInclude Compi
         set( GeneratedSources "" )
         foreach( RpslFileName ${RpslFiles} )
             message( STATUS "Found Rpsl: " ${RpslFileName} )
-            CompileRpslDxc( ${AppName} ${RpslFileName} "${GeneratedSources}" "Generated")
+            CompileRpslDxc( ${AppName} ${RpslFileName} RpslOutputSource "Generated")
+            set( GeneratedSources ${GeneratedSources} ${RpslOutputSource} )
         endforeach()
         source_group( TREE "${CMAKE_CURRENT_BINARY_DIR}/${AppName}/Generated/" PREFIX "rps_generated" FILES ${GeneratedSources} )
 
@@ -385,7 +443,7 @@ function( AddCppApp AppName AppFolder SrcFolder SrcSharedFolder SrcInclude Compi
 
 endfunction()
 
-function( AddSampleApps AppNames Variant Platform SrcInclude CompileFlags DependenciesString )
+function( AddSampleApps AppNames Variant Platform SrcInclude CompileFlags CompileDefinitions DependenciesString )
     foreach(AppName ${AppNames})
         AddCppApp( ${AppName}${Variant}_${Platform} "samples/${Platform}" ${PROJECT_SOURCE_DIR}/samples/${Platform}/${AppName} ${PROJECT_SOURCE_DIR}/samples/shared/${AppName} "${SrcInclude}" ${CompileFlags} "${DependenciesString}" )
     endforeach()
@@ -396,7 +454,7 @@ set ( FullSource TRUE )
 
 # Common for full or limited source
 BuildFolderProperty( "modules" ModuleFolder )
-AddModule( rps ${PROJECT_SOURCE_DIR}/include "${ModuleFolder}" "" "" INTERFACE "" )
+AddModule( rps ${PROJECT_SOURCE_DIR}/include "${ModuleFolder}" "" "" "${CompileDefinitions}" INTERFACE "" )
 
 add_subdirectory( src )
 add_subdirectory( external )

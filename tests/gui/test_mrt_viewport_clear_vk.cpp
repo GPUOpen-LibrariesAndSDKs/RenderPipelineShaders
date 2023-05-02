@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifdef _WIN32
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -13,10 +13,10 @@
 
 #define RPS_VK_RUNTIME 1
 
-#include "test_mrt_viewport_clear_shared.h"
+#include "test_mrt_viewport_clear_shared.hpp"
 
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_vk_renderer.h"
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_vk_renderer.hpp"
 
 class TestVkMrtViewportClear : public RpsTestVulkanRenderer, public TestRpsMrtViewportClear
 {
@@ -826,6 +826,7 @@ private:
 
         uint32_t numShaderStages = 2;
 
+        char gsName[128];
         if (gsEntry)
         {
             smCI.pCode    = reinterpret_cast<const uint32_t*>(gsCode.data());
@@ -833,7 +834,6 @@ private:
 
             ThrowIfFailedVK(vkCreateShaderModule(m_device, &smCI, nullptr, &gsModule));
 
-            char gsName[128];
             sprintf_s(gsName, "%S", gsEntry);
 
             shaderStages[2].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

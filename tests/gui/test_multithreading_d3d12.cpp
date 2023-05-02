@@ -1,15 +1,15 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#include "test_multithreading_shared.h"
+#include "test_multithreading_shared.hpp"
 
 #include "rps/runtime/d3d12/rps_d3d12_runtime.h"
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_d3d12_renderer.h"
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_d3d12_renderer.hpp"
 
 using namespace DirectX;
 
@@ -166,15 +166,14 @@ protected:
                     m_failCount++;
                 }
 
-                RpsRuntimeRenderPassFlags rpFlags = {};
+                RpsCmdRenderPassBeginInfo rpBeginInfo = {};
 
-                rpFlags = RPS_RUNTIME_RENDER_PASS_FLAG_NONE;
                 if (i != 0)
-                    rpFlags |= RPS_RUNTIME_RENDER_PASS_RESUMING;
+                    rpBeginInfo.flags |= RPS_RUNTIME_RENDER_PASS_RESUMING;
                 if (i != (numThreads - 1))
-                    rpFlags |= RPS_RUNTIME_RENDER_PASS_SUSPENDING;
+                    rpBeginInfo.flags |= RPS_RUNTIME_RENDER_PASS_SUSPENDING;
 
-                RpsResult threadResult = rpsCmdBeginRenderPass(pLocalContext, rpFlags);
+                RpsResult threadResult = rpsCmdBeginRenderPass(pLocalContext, &rpBeginInfo);
                 if (threadResult != RPS_OK)
                     m_failCount++;
 

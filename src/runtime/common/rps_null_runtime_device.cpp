@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "core/rps_util.hpp"
 #include "core/rps_device.hpp"
@@ -12,12 +12,13 @@
 #include "runtime/common/rps_runtime_util.hpp"
 
 #include "runtime/common/phases/rps_pre_process.hpp"
-#include "runtime/common/phases/rps_dag_build.h"
+#include "runtime/common/phases/rps_dag_build.hpp"
 #include "runtime/common/phases/rps_access_dag_build.hpp"
 #include "runtime/common/phases/rps_cmd_print.hpp"
 #include "runtime/common/phases/rps_cmd_dag_print.hpp"
 #include "runtime/common/phases/rps_dag_schedule.hpp"
 #include "runtime/common/phases/rps_memory_schedule.hpp"
+#include "runtime/common/phases/rps_lifetime_analysis.hpp"
 #include "runtime/common/phases/rps_schedule_print.hpp"
 
 namespace rps
@@ -75,10 +76,12 @@ namespace rps
         return resDesc.IsBuffer() ? 1 : GetFormatAspectMask(resDesc.image.format);
     }
 
-    RPS_MAYBE_UNUSED
     static uint32_t GetViewAspectMask(const ResourceDescPacked& resDesc, const RpsImageView& imageView)
     {
-        RPS_ASSERT(!resDesc.IsBuffer());
+        if (resDesc.IsBuffer())
+        {
+            return 1;
+        }
 
         const RpsFormat viewForamt =
             (imageView.base.viewFormat != RPS_FORMAT_UNKNOWN) ? imageView.base.viewFormat : resDesc.image.format;
@@ -239,13 +242,18 @@ namespace rps
 
     RpsResult NullRuntimeDevice::BuildDefaultRenderGraphPhases(RenderGraph& renderGraph)
     {
-        RPS_V_RETURN(renderGraph.ReservePhases(6));
+        RPS_V_RETURN(renderGraph.ReservePhases(16));
         RPS_V_RETURN(renderGraph.AddPhase<PreProcessPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<CmdDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<DAGBuilderPass>());
         RPS_V_RETURN(renderGraph.AddPhase<AccessDAGBuilderPass>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGPrintPhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGSchedulePass>(renderGraph));
+        if (!rpsAnyBitsSet(renderGraph.GetCreateInfo().renderGraphFlags, RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS))
+        {
+            RPS_V_RETURN(renderGraph.AddPhase<LifetimeAnalysisPhase>());
+        }
+
         RPS_V_RETURN(renderGraph.AddPhase<MemorySchedulePhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<ScheduleDebugPrintPhase>());
         //A NullRuntime backend will be added by the render graph automatically because no backend is set
@@ -284,9 +292,9 @@ namespace rps
                                                                   const RpsAccessAttr&    accessAttr,
                                                                   const RpsImageView&     imageView)
     {
-        // TODO: Filter aspect by format + view + access flags
-        // Filter access flags by format + view ?
-        const uint32_t aspectMask = GetFormatAspectMask(imageView.base.viewFormat);
+        const uint32_t viewAspectMask = GetViewAspectMask(resourceInfo.desc, imageView);
+        const uint32_t aspectMask     = GetResourceAspectMask(resourceInfo.desc) & viewAspectMask;
+
         outRange = SubresourceRangePacked(aspectMask, imageView.subresourceRange, resourceInfo.desc);
 
         return RPS_OK;

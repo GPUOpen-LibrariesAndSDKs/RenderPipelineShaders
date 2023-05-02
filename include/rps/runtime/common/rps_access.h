@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_ACCESS_H_
-#define _RPS_ACCESS_H_
+#ifndef RPS_ACCESS_H
+#define RPS_ACCESS_H
 
 #ifndef RPSL_COMPILER_BUILD
 
@@ -61,9 +61,21 @@ typedef enum RpsAccessFlagBits
 
     // Additional decorator flags not for standalone use but instead for combination with basic access flags.
 
-    /// Access can be used by a render pass attachment (as render target or depth stencil). Used to distinguish clear-only
-    /// accesses (which may use special clear commands) and render target / depth stencil view accesses.
-    RPS_ACCESS_RENDER_PASS = 1 << 25,
+    /// Access does not read existing data so it can be discarded. Does not apply to the stencil aspect.
+    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT = 1 << 22,
+
+    /// Data can be discarded after current access (node). Does not apply to the stencil aspect.
+    /// This is typically not programmed directly, but added internally during subresource data lifetime analysis
+    /// based on if the data will be accessed afterwards. However it can be used to force discarding the data.
+    RPS_ACCESS_DISCARD_DATA_AFTER_BIT = 1 << 23,
+
+    /// Stencil access does not read existing data so it can be discarded. Applies only to the stencil aspect.
+    RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT = 1 << 24,
+
+    /// Stencil data can be discarded after current access (node). Applies only to the stencil aspect.
+    /// This is typically not programmed directly, but added internally during subresource data lifetime analysis
+    /// based on if the data will be accessed afterwards. However it can be used to force discarding the data.
+    RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT = 1 << 25,
 
     /// Initial state when entering the node. This allows a view to have a different state at entering and exiting,
     /// in case the node implementation needs to perform a transition but does not want to transition it back to the
@@ -78,8 +90,9 @@ typedef enum RpsAccessFlagBits
     /// View is cleared before the current access. Usually used together with other basic access flags.
     RPS_ACCESS_CLEAR_BIT = 1 << 28,
 
-    /// Access does not read existing data so it can be discarded.
-    RPS_ACCESS_DISCARD_OLD_DATA_BIT = 1 << 29,
+    /// Access can be used by a render pass attachment (as render target or depth stencil). Used to distinguish clear-only
+    /// accesses (which may use special clear commands) and render target / depth stencil view accesses.
+    RPS_ACCESS_RENDER_PASS = 1 << 29,
 
     /// Access does not care about the ordering with regard to other accesses which also have the
     /// RPS_ACCESS_RELAXED_ORDER_BIT flag.
@@ -564,4 +577,4 @@ namespace rps
 
 /// @} end addtogroup RpsRenderGraphRuntime
 
-#endif  //_RPS_ACCESS_H_
+#endif  //RPS_ACCESS_H

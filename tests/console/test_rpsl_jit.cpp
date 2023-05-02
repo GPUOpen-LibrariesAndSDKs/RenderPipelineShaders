@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
@@ -16,7 +16,7 @@
 #include "utils/rps_test_common.h"
 
 // TODO: make JIT test crossplatform
-#include "utils/rps_test_win32.h"
+#include "utils/rps_test_win32.hpp"
 
 static const char c_RpslCode[] = R"(
 node Foo(uint2 ua, float fa[3]);
@@ -59,7 +59,7 @@ TEST_CASE("TestRPSJit")
 
     // Call rps-hlslc, compile string to bitcode
     std::stringstream rpsHlslcCmdLine;
-    rpsHlslcCmdLine << "rps-hlslc.exe \"" << tmpRpslPath << "\" -od \"" << workingDir
+    rpsHlslcCmdLine << "rps_hlslc/rps-hlslc.exe \"" << tmpRpslPath << "\" -od \"" << workingDir
                     << "\" -m test_rpsl_jit -O3 -rps-target-dll -rps-bc -cbe=0";
     REQUIRE(LaunchProcess(rpsHlslcCmdLine.str().c_str()));
 

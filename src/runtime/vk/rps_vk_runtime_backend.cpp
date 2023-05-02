@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_render_states.h"
 #include "rps/runtime/vk/rps_vk_runtime.h"
@@ -17,6 +17,9 @@
 
 namespace rps
 {
+    static constexpr bool IsSrcLayoutTrue  = true;
+    static constexpr bool IsSrcLayoutFalse = false;
+
     template <bool bSrcLayout>
     VkImageLayout GetVkImageLayout(const RpsAccessAttr& access)
     {
@@ -104,11 +107,16 @@ namespace rps
         return vkFlags;
     }
 
-    // bRenderPass: Indicate if the access is used in part of a RenderPass.
-    //              Currently mainly to distinguish between RenderPass clears (Attachment access)
-    //              from Cmd Clears (Transfer access).
-    // bIsSrc:      Indicates if the access is associated with the source access / stage of a barrier.
-    template <bool bRenderPass, bool bIsSrc>
+    static constexpr bool IsRenderPassAttachmentTrue  = true;
+    static constexpr bool IsRenderPassAttachmentFalse = false;
+    static constexpr bool IsSrcAccessTrue             = true;
+    static constexpr bool IsSrcAccessFalse            = false;
+
+    // bRenderPassAttachment: Indicate if the access is used as a RenderPass attachment.
+    //                        Currently mainly to distinguish between RenderPass clears (Attachment access)
+    //                        from Cmd Clears (Transfer access).
+    // bIsSrc:                Indicates if the access is associated with the source access / stage of a barrier.
+    template <bool bRenderPassAttachment, bool bIsSrc>
     VKAccessInfo GetVKAccessInfo(const RpsAccessAttr& access)
     {
         const uint32_t queueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;  // TODO
@@ -116,27 +124,30 @@ namespace rps
         // TODO:
         if (access.accessFlags == RPS_ACCESS_UNKNOWN)
         {
-            return VKAccessInfo{bIsSrc ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            return VKAccessInfo{bIsSrc ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                 VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                                 VK_IMAGE_LAYOUT_UNDEFINED,
                                 queueFamilyIndex};
         }
 
-        const bool isWriteOnly  = rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DISCARD_OLD_DATA_BIT);
-        const bool isRenderPass = bRenderPass || (access.accessFlags & RPS_ACCESS_RENDER_PASS);
+        const bool isRenderPassAttachment = bRenderPassAttachment || (access.accessFlags & RPS_ACCESS_RENDER_PASS);
 
-        if (!isRenderPass && rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_CLEAR_BIT))
+        if (!isRenderPassAttachment && rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_CLEAR_BIT))
             return VKAccessInfo{VK_PIPELINE_STAGE_TRANSFER_BIT,
                                 VK_ACCESS_TRANSFER_WRITE_BIT,
                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                 queueFamilyIndex};
 
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_RENDER_TARGET_BIT))
+        {
+            const bool isWriteOnly = rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT);
+
             return VKAccessInfo(
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | (isWriteOnly ? 0 : VK_ACCESS_COLOR_ATTACHMENT_READ_BIT),
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 queueFamilyIndex);
+        }
 
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DEPTH_STENCIL_WRITE))
         {
@@ -146,6 +157,12 @@ namespace rps
                 layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL;
             else if (rpsAllBitsSet(access.accessFlags, RPS_ACCESS_DEPTH_READ_BIT | RPS_ACCESS_STENCIL_WRITE_BIT))
                 layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
+
+            const bool isWriteOnly = !rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DEPTH_STENCIL_READ) &&
+                                     (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DEPTH_WRITE_BIT) ==
+                                      rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT)) &&
+                                     (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_STENCIL_WRITE_BIT) ==
+                                      rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT));
 
             return VKAccessInfo(
                 bIsSrc ? (VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
@@ -166,12 +183,16 @@ namespace rps
         }
 
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_RESOLVE_DEST_BIT))
-            return VKAccessInfo{
-                VkPipelineStageFlags(isRenderPass ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                                                  : VK_PIPELINE_STAGE_TRANSFER_BIT),
-                VkAccessFlags(isRenderPass ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : VK_ACCESS_TRANSFER_WRITE_BIT),
-                isRenderPass ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                queueFamilyIndex};
+        {
+            return isRenderPassAttachment ? VKAccessInfo{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                         queueFamilyIndex}
+                                          : VKAccessInfo{VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                                         VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                         queueFamilyIndex};
+        }
 
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_COPY_DEST_BIT))
             return VKAccessInfo{VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -179,17 +200,21 @@ namespace rps
                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                 queueFamilyIndex};
 
+#ifdef VK_EXT_transform_feedback
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_STREAM_OUT_BIT))
             return VKAccessInfo{VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT,
                                 VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT,
                                 VK_IMAGE_LAYOUT_UNDEFINED,
                                 queueFamilyIndex};
+#endif  //VK_EXT_transform_feedback
 
+#ifdef VK_KHR_acceleration_structure
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_RAYTRACING_AS_BUILD_BIT))
             return VKAccessInfo{VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
                                 VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
                                 VK_IMAGE_LAYOUT_UNDEFINED,
                                 queueFamilyIndex};
+#endif  //VK_KHR_acceleration_structure
 
         if (rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_CPU_WRITE_BIT))
             return VKAccessInfo{
@@ -213,8 +238,12 @@ namespace rps
             // | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;  // TODO: Adding DS Write bit since previous access might be RenderPass StoreOpStore. Which "uses the access type VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT"
             {RPS_ACCESS_SHADER_RESOURCE_BIT,    0,                                      VK_ACCESS_SHADER_READ_BIT,              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
             {RPS_ACCESS_COPY_SRC_BIT | RPS_ACCESS_RESOLVE_SRC_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
+#ifdef VK_KHR_fragment_shading_rate
             {RPS_ACCESS_SHADING_RATE_BIT,       VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR, VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR},
-            {RPS_ACCESS_RAYTRACING_AS_BUILD_BIT, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR, VK_IMAGE_LAYOUT_UNDEFINED},
+#endif //VK_KHR_fragment_shading_rate
+#ifdef VK_KHR_acceleration_structure
+            {RPS_ACCESS_RAYTRACING_AS_READ_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR, VK_IMAGE_LAYOUT_UNDEFINED},
+#endif //VK_KHR_acceleration_structure
             {RPS_ACCESS_PRESENT_BIT,            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,   VkAccessFlags{0},                       bIsSrc ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
             {RPS_ACCESS_CPU_READ_BIT,           VK_PIPELINE_STAGE_HOST_BIT,             VK_ACCESS_HOST_READ_BIT,                VK_IMAGE_LAYOUT_UNDEFINED},
         };
@@ -253,6 +282,25 @@ namespace rps
         return result;
     }
 
+    void DestroyVkResource(const VKRuntimeDevice&  device,
+                           const ResourceInstance& resInfo,
+                           RpsRuntimeResource      hRuntimeResource)
+    {
+        const VkDevice hVkDevice = device.GetVkDevice();
+        RPS_USE_VK_FUNCTIONS(device.GetVkFunctions());
+
+        if (resInfo.desc.IsImage())
+        {
+            VkImage hImage = rpsVKImageFromHandle(hRuntimeResource);
+            RPS_VK_API_CALL(vkDestroyImage(hVkDevice, hImage, nullptr));
+        }
+        else
+        {
+            VkBuffer hBuffer = rpsVKBufferFromHandle(hRuntimeResource);
+            RPS_VK_API_CALL(vkDestroyBuffer(hVkDevice, hBuffer, nullptr));
+        }
+    }
+
     VKRuntimeBackend::~VKRuntimeBackend()
     {
     }
@@ -261,7 +309,7 @@ namespace rps
     {
         for (auto& frameResource : m_frameResources)
         {
-            frameResource.DestroyDeviceResources(m_device.GetVkDevice());
+            frameResource.DestroyDeviceResources(m_device);
         }
 
         m_frameResources.clear();
@@ -284,7 +332,7 @@ namespace rps
         else
         {
             // TODO - Recycle
-            m_frameResources[m_currentResourceFrame].DestroyDeviceResources(m_device.GetVkDevice());
+            m_frameResources[m_currentResourceFrame].DestroyDeviceResources(m_device);
 
             std::swap(m_pendingReleaseImages, m_frameResources[m_currentResourceFrame].pendingImages);
             std::swap(m_pendingReleaseBuffers, m_frameResources[m_currentResourceFrame].pendingBuffers);
@@ -304,6 +352,7 @@ namespace rps
     RpsResult VKRuntimeBackend::CreateHeaps(const RenderGraphUpdateContext& context, ArrayRef<HeapInfo> heaps)
     {
         auto hVkDevice = m_device.GetVkDevice();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         for (auto& heapInfo : heaps)
         {
@@ -318,7 +367,7 @@ namespace rps
             memAllocInfo.allocationSize       = heapInfo.size;
 
             VkDeviceMemory hMemory;
-            RPS_V_RETURN(VkResultToRps(vkAllocateMemory(hVkDevice, &memAllocInfo, nullptr, &hMemory)));
+            RPS_V_RETURN(VkResultToRps(RPS_VK_API_CALL(vkAllocateMemory(hVkDevice, &memAllocInfo, nullptr, &hMemory))));
 
             heapInfo.hRuntimeHeap = {hMemory};
         }
@@ -329,6 +378,7 @@ namespace rps
     void VKRuntimeBackend::DestroyHeaps(ArrayRef<HeapInfo> heaps)
     {
         auto hVkDevice = m_device.GetVkDevice();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         for (auto& heapInfo : heaps)
         {
@@ -337,7 +387,7 @@ namespace rps
                 VkDeviceMemory hMemory = rpsVKMemoryFromHandle(heapInfo.hRuntimeHeap);
                 heapInfo.hRuntimeHeap  = {};
 
-                vkFreeMemory(hVkDevice, hMemory, nullptr);
+                RPS_VK_API_CALL(vkFreeMemory(hVkDevice, hMemory, nullptr));
             }
         }
     }
@@ -348,6 +398,7 @@ namespace rps
         // Bind Resource Memory
         auto& heaps     = GetRenderGraph().GetHeapInfos();
         auto  hVkDevice = m_device.GetVkDevice();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         const auto& deviceCreateInfo = m_device.GetCreateInfo();
         auto        resourceDecls    = GetRenderGraph().GetBuilder().GetResourceDecls();
@@ -361,8 +412,31 @@ namespace rps
 
         for (auto& resInfo : resInstances)
         {
-            if (resInfo.isPendingCreate)
+            if (resInfo.isPendingCreate && !resInfo.HasEmptyLifetime() && (resInfo.allocRequirement.size > 0))
             {
+                // Late resource creation. Normally VK resource handles are created during GetResourceAllocInfo.
+                // But due to recreate / re-placement, the handle could be destroyed at this time.
+                if (!resInfo.hRuntimeResource && (resInfo.allocPlacement.heapId != RPS_INDEX_NONE_U32))
+                {
+                    VKRuntimeDevice::VKResourceAllocInfo allocInfo = {};
+                    RPS_V_RETURN(m_device.GetResourceAllocInfo(resInfo, allocInfo));
+
+                    if ((allocInfo.memoryRequirements.size != resInfo.allocRequirement.size) ||
+                        (allocInfo.memoryRequirements.alignment != resInfo.allocRequirement.alignment) ||
+                        !rpsAllBitsSet(allocInfo.memoryRequirements.memoryTypeBits,
+                                       (1u << resInfo.allocRequirement.memoryTypeIndex)))
+                    {
+                        if (allocInfo.hRuntimeResource)
+                        {
+                            DestroyVkResource(m_device, resInfo, allocInfo.hRuntimeResource);
+                        }
+
+                        return RPS_ERROR_INVALID_OPERATION;
+                    }
+
+                    resInfo.hRuntimeResource = allocInfo.hRuntimeResource;
+                }
+
                 if (resInfo.hRuntimeResource)
                 {
                     if (bEnableDebugNames)
@@ -370,9 +444,9 @@ namespace rps
                         resourceDecls[resInfo.resourceDeclId].name.ToCStr(nameBuf, RPS_COUNTOF(nameBuf));
 
                         RpsRuntimeOpSetDebugNameArgs setNameArgs = {};
-                        setNameArgs.hResource                = resInfo.hRuntimeResource;
-                        setNameArgs.resourceType             = resInfo.desc.type;
-                        setNameArgs.name                     = nameBuf;
+                        setNameArgs.hResource                    = resInfo.hRuntimeResource;
+                        setNameArgs.resourceType                 = resInfo.desc.type;
+                        setNameArgs.name                         = nameBuf;
 
                         pfnSetDebugNameCb(deviceCreateInfo.pUserContext, &setNameArgs);
                     }
@@ -381,25 +455,35 @@ namespace rps
                     {
                         auto pMemory = rpsVKMemoryFromHandle(heaps[resInfo.allocPlacement.heapId].hRuntimeHeap);
                         if (resInfo.desc.IsImage())
-                        {
-                            RPS_V_RETURN(VkResultToRps(vkBindImageMemory(hVkDevice,
-                                                                         rpsVKImageFromHandle(resInfo.hRuntimeResource),
-                                                                         pMemory,
-                                                                         resInfo.allocPlacement.offset)));
+                        {   
+                            RPS_V_RETURN(VkResultToRps(
+                                RPS_VK_API_CALL(vkBindImageMemory(hVkDevice,
+                                                                  rpsVKImageFromHandle(resInfo.hRuntimeResource),
+                                                                  pMemory,
+                                                                  resInfo.allocPlacement.offset))));
                         }
                         else
                         {
-                            RPS_V_RETURN(
-                                VkResultToRps(vkBindBufferMemory(hVkDevice,
-                                                                 rpsVKBufferFromHandle(resInfo.hRuntimeResource),
-                                                                 pMemory,
-                                                                 resInfo.allocPlacement.offset)));
+                            RPS_V_RETURN(VkResultToRps(
+                                RPS_VK_API_CALL(vkBindBufferMemory(hVkDevice,
+                                                                    rpsVKBufferFromHandle(resInfo.hRuntimeResource),
+                                                                    pMemory,
+                                                                    resInfo.allocPlacement.offset))));
                         }
                         resInfo.isPendingInit = true;
                     }
                 }
+                else
+                {
+                    RPS_TODO(
+                        "Unreachable code path. "
+                        "Currently we expect resInfo.hRuntimeResource to be valid at this point. "
+                        "This is reserved for e.g. dedicated allocation");
+                }
 
-                resInfo.isPendingCreate = false;
+                // VK resources starts with undefined layout.
+                static constexpr AccessAttr PrevFinalAccess = {};
+                resInfo.FinalizeRuntimeResourceCreation(&PrevFinalAccess);
             }
             else if (!resInfo.isExternal)
             {
@@ -412,22 +496,13 @@ namespace rps
 
     void VKRuntimeBackend::DestroyResources(ArrayRef<ResourceInstance> resInstances)
     {
-        auto hVkDevice = m_device.GetVkDevice();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         for (auto& resInfo : resInstances)
         {
             if (resInfo.hRuntimeResource && !resInfo.isExternal)
             {
-                if (resInfo.desc.IsImage())
-                {
-                    VkImage hImage = rpsVKImageFromHandle(resInfo.hRuntimeResource);
-                    vkDestroyImage(hVkDevice, hImage, nullptr);
-                }
-                else
-                {
-                    VkBuffer hBuffer = rpsVKBufferFromHandle(resInfo.hRuntimeResource);
-                    vkDestroyBuffer(hVkDevice, hBuffer, nullptr);
-                }
+                DestroyVkResource(m_device, resInfo, resInfo.hRuntimeResource);
             }
         }
     }
@@ -463,8 +538,7 @@ namespace rps
 
             const uint32_t backendCmdBegin = uint32_t(m_runtimeCmds.size());
 
-            for (uint32_t iCmd = batchInfo.cmdBegin, numCmds = batchInfo.cmdBegin + batchInfo.numCmds;
-                 iCmd < numCmds;
+            for (uint32_t iCmd = batchInfo.cmdBegin, numCmds = batchInfo.cmdBegin + batchInfo.numCmds; iCmd < numCmds;
                  iCmd++)
             {
                 const auto& runtimeCmd = runtimeCmds[iCmd];
@@ -530,7 +604,7 @@ namespace rps
             ProcessBarrierBatch(context, transitionRange);
 
             batchInfo.cmdBegin = backendCmdBegin;
-            batchInfo.numCmds       = uint32_t(m_runtimeCmds.size()) - backendCmdBegin;
+            batchInfo.numCmds  = uint32_t(m_runtimeCmds.size()) - backendCmdBegin;
         }
 
         // Create Views / Per-Cmd objects
@@ -596,6 +670,7 @@ namespace rps
         auto& nodeDeclInfo = *pCmdInfo->pNodeDecl;
         auto  hVkCmdBuf    = GetContextVkCmdBuf(context);
         auto& runtimeCmd   = *context.GetRuntimeCmd<VKRuntimeCmd>();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         RPS_RETURN_ERROR_IF(!nodeDeclInfo.MaybeGraphicsNode(), RPS_ERROR_INVALID_OPERATION);
 
@@ -603,10 +678,7 @@ namespace rps
 
         const auto cmdCbFlags = context.bIsCmdBeginEnd ? cmd.callback.flags : RPS_CMD_CALLBACK_FLAG_NONE;
 
-        const bool bIsCmdMultiThreading = rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_MULTI_THREADED_BIT);
-
         const bool bToExecSecondaryCmdBuf =
-            bIsCmdMultiThreading ||
             rpsAnyBitsSet(context.renderPassFlags, RPS_RUNTIME_RENDER_PASS_EXECUTE_SECONDARY_COMMAND_BUFFERS);
 
         const bool bIsSecondaryCmdBuffer =
@@ -638,20 +710,20 @@ namespace rps
             rpBegin.renderPass      = currResources.renderPasses[runtimeCmd.renderPassId];
             rpBegin.framebuffer     = currResources.frameBuffers[runtimeCmd.frameBufferId];
             rpBegin.renderArea      = VkRect2D{{defaultRenderArea.x, defaultRenderArea.y},
-                                          {uint32_t(defaultRenderArea.width), uint32_t(defaultRenderArea.height)}};
+                                               {uint32_t(defaultRenderArea.width), uint32_t(defaultRenderArea.height)}};
             rpBegin.clearValueCount = uint32_t(runtimeCmd.clearValues.size());
             rpBegin.pClearValues    = runtimeCmd.clearValues.data();
 
             const VkSubpassContents subpassContent =
                 bToExecSecondaryCmdBuf ? VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS : VK_SUBPASS_CONTENTS_INLINE;
 
-            vkCmdBeginRenderPass(hVkCmdBuf, &rpBegin, subpassContent);
+            RPS_VK_API_CALL(vkCmdBeginRenderPass(hVkCmdBuf, &rpBegin, subpassContent));
         }
 
         // Setup Viewport / Scissor states
 
         const bool bSetViewportScissors =
-            !bToExecSecondaryCmdBuf && !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_BIT);
+            !bToExecSecondaryCmdBuf && !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_SCISSOR_BIT);
 
         if (bSetViewportScissors)
         {
@@ -680,9 +752,8 @@ namespace rps
 
                 pViewports = viewports;
             }
-
-            vkCmdSetViewport(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numViewports, pViewports);
-            vkCmdSetScissor(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numScissorRects, pScissorRects);
+            RPS_VK_API_CALL(vkCmdSetViewport(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numViewports, pViewports));
+            RPS_VK_API_CALL(vkCmdSetScissor(hVkCmdBuf, 0, cmdRpInfo.viewportInfo.numScissorRects, pScissorRects));
         }
 
         return RPS_OK;
@@ -694,6 +765,7 @@ namespace rps
         auto& runtimeCmd   = *context.GetRuntimeCmd<VKRuntimeCmd>();
         auto& cmd          = *context.pCmd;
         auto& nodeDeclInfo = *context.pCmdInfo->pNodeDecl;
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
 
         RPS_RETURN_ERROR_IF(!nodeDeclInfo.MaybeGraphicsNode(), RPS_ERROR_INVALID_OPERATION);
 
@@ -710,7 +782,7 @@ namespace rps
 
         if (bEndVKRenderPass)
         {
-            vkCmdEndRenderPass(GetContextVkCmdBuf(context));
+            RPS_VK_API_CALL(vkCmdEndRenderPass(GetContextVkCmdBuf(context)));
         }
 
         return RPS_OK;
@@ -719,6 +791,8 @@ namespace rps
     RpsResult VKRuntimeBackend::RecordCmdFixedFunctionBindingsAndDynamicStates(
         const RuntimeCmdCallbackContext& context) const
     {
+        RPS_RETURN_OK_IF(rpsAnyBitsSet(context.pCmd->callback.flags, RPS_CMD_CALLBACK_CUSTOM_STATE_SETUP_BIT));
+
         auto& renderGraph  = *context.pRenderGraph;
         auto& nodeDeclInfo = *context.pCmdInfo->pNodeDecl;
 
@@ -822,14 +896,15 @@ namespace rps
         }
     }
 
-    RpsResult CreateImageView(VkDevice                hDevice,
+    RpsResult CreateImageView(const VKRuntimeDevice&  device,
                               VkImage                 hImage,
                               const ResourceInstance& resInfo,
                               const CmdAccessInfo&    accessInfo,
                               VkImageView&            dstImgView)
     {
-        const RpsFormat     viewFormat   = rpsVkGetImageViewFormat(accessInfo.viewFormat, resInfo);
-        const RpsImageView* pImgViewInfo = reinterpret_cast<const RpsImageView*>(accessInfo.pViewInfo);
+        const RpsFormat       viewFormat   = rpsVkGetImageViewFormat(accessInfo.viewFormat, resInfo);
+        const RpsImageView*   pImgViewInfo = reinterpret_cast<const RpsImageView*>(accessInfo.pViewInfo);
+        RPS_USE_VK_FUNCTIONS(device.GetVkFunctions());
 
         VkImageViewCreateInfo vkCreateInfo;
         vkCreateInfo.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -842,16 +917,18 @@ namespace rps
         GetVkComponentMapping(vkCreateInfo.components, pImgViewInfo->componentMapping);
         GetVkSubresourceRange(vkCreateInfo.subresourceRange, accessInfo.range);
 
-        return VkResultToRps(vkCreateImageView(hDevice, &vkCreateInfo, nullptr, &dstImgView));
+        return VkResultToRps(
+            RPS_VK_API_CALL(vkCreateImageView(device.GetVkDevice(), &vkCreateInfo, nullptr, &dstImgView)));
     }
 
-    RpsResult CreateBufferView(VkDevice                hDevice,
+    RpsResult CreateBufferView(const VKRuntimeDevice&  device,
                                VkBuffer                hBuffer,
                                const ResourceInstance& resInfo,
                                const CmdAccessInfo&    accessInfo,
                                VkBufferView&           dstBufView)
     {
         RPS_ASSERT(accessInfo.viewFormat != RPS_FORMAT_UNKNOWN);
+        RPS_USE_VK_FUNCTIONS(device.GetVkFunctions());
 
         const RpsBufferView* pBufViewInfo = reinterpret_cast<const RpsBufferView*>(accessInfo.pViewInfo);
 
@@ -865,7 +942,8 @@ namespace rps
         vkCreateInfo.range =
             (pBufViewInfo->sizeInBytes == RPS_BUFFER_WHOLE_SIZE) ? VK_WHOLE_SIZE : pBufViewInfo->sizeInBytes;
 
-        return VkResultToRps(vkCreateBufferView(hDevice, &vkCreateInfo, nullptr, &dstBufView));
+        return VkResultToRps(
+            RPS_VK_API_CALL(vkCreateBufferView(device.GetVkDevice(), &vkCreateInfo, nullptr, &dstBufView)));
     }
 
     RpsResult VKRuntimeBackend::CreateImageViews(const RenderGraphUpdateContext& context,
@@ -873,7 +951,6 @@ namespace rps
     {
         RPS_RETURN_OK_IF(accessIndices.empty());
 
-        auto  hVkDevice         = m_device.GetVkDevice();
         auto& cmdAccesses       = context.renderGraph.GetCmdAccessInfos();
         auto  resourceInstances = context.renderGraph.GetResourceInstances().range_all();
         auto& currResources     = m_frameResources[m_currentResourceFrame];
@@ -895,7 +972,7 @@ namespace rps
             m_imageViewLayouts[imgViewIndex] = GetTrackedImageLayoutInfo(resource, access);
 
             VkImageView& hImgView = currResources.imageViews[imgViewIndex];
-            RPS_V_RETURN(CreateImageView(hVkDevice, hImage, resource, access, hImgView));
+            RPS_V_RETURN(CreateImageView(m_device, hImage, resource, access, hImgView));
 
             m_accessToDescriptorMap[accessIndex] = imgViewIndex;
 
@@ -910,7 +987,6 @@ namespace rps
     {
         RPS_RETURN_OK_IF(accessIndices.empty());
 
-        auto  hVkDevice         = m_device.GetVkDevice();
         auto& cmdAccesses       = context.renderGraph.GetCmdAccessInfos();
         auto  resourceInstances = context.renderGraph.GetResourceInstances().range_all();
         auto& currResources     = m_frameResources[m_currentResourceFrame];
@@ -928,7 +1004,7 @@ namespace rps
             FromHandle(hBuffer, resource.hRuntimeResource);
 
             VkBufferView& hBufView = currResources.bufferViews[bufViewIndex];
-            RPS_V_RETURN(CreateBufferView(hVkDevice, hBuffer, resource, access, hBufView));
+            RPS_V_RETURN(CreateBufferView(m_device, hBuffer, resource, access, hBufView));
 
             m_accessToDescriptorMap[accessIndex] = bufViewIndex;
 
@@ -938,51 +1014,75 @@ namespace rps
         return RPS_OK;
     }
 
+    static constexpr bool StencilOp    = true;
+    static constexpr bool NonStencilOp = false;
+
+    template <bool IsStencil = NonStencilOp>
     VkAttachmentLoadOp GetVkLoadOp(const CmdAccessInfo& access, const NodeDeclRenderPassInfo& rpInfo)
     {
         // For depth stencil, need additional clear flags from rpInfo in case we want to clear only depth or stencil aspect.
-        const bool bIsDepthStencil          = !!(access.access.accessFlags & RPS_ACCESS_DEPTH_STENCIL);
-        const bool bShouldClearDepthStencil = (rpInfo.clearDepth && (access.access.accessFlags & RPS_ACCESS_DEPTH)) ||
-                                              (rpInfo.clearStencil && (access.access.accessFlags & RPS_ACCESS_STENCIL));
+        const bool bIsDepthStencil = !!(access.access.accessFlags & RPS_ACCESS_DEPTH_STENCIL);
+        const bool bShouldClearDepthStencil =
+            IsStencil ? (rpInfo.clearDepth && (access.access.accessFlags & RPS_ACCESS_DEPTH))
+                      : (rpInfo.clearStencil && (access.access.accessFlags & RPS_ACCESS_STENCIL));
+
+        static constexpr RpsAccessFlags DiscardAccessMask =
+            (IsStencil ? RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT : RPS_ACCESS_DISCARD_DATA_BEFORE_BIT);
 
         if (bShouldClearDepthStencil || (!bIsDepthStencil && (access.access.accessFlags & RPS_ACCESS_CLEAR_BIT)))
             return VK_ATTACHMENT_LOAD_OP_CLEAR;
-        else if (access.access.accessFlags & RPS_ACCESS_DISCARD_OLD_DATA_BIT)
+        else if (access.access.accessFlags & DiscardAccessMask)
             return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        else  //if ((pAccess->accessFlagsPrev & (RPS_RESOURCE_ACCESS_NO_FLAGS | RPS_RESOURCE_ACCESS_PRESENT_BIT)) == 0)
+        else
             return VK_ATTACHMENT_LOAD_OP_LOAD;
-        // else
-        //     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     }
 
-    VkAttachmentStoreOp GetVkStoreOp(const CmdAccessInfo& access)
+    template <bool IsStencil = NonStencilOp>
+    VkAttachmentStoreOp GetVkStoreOp(const CmdAccessInfo& access, bool bStoreOpNoneSupported)
     {
+        static constexpr RpsAccessFlags DiscardAccessMask =
+            (IsStencil ? RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT : RPS_ACCESS_DISCARD_DATA_AFTER_BIT);
+
+        static constexpr RpsAccessFlags NonStencilWriteAccessMask =
+            (RPS_ACCESS_ALL_GPU_WRITE & (~RPS_ACCESS_STENCIL_WRITE_BIT));
+
+#ifdef RPS_VK_ATTACHMENT_STORE_OP_NONE
+        if (bStoreOpNoneSupported &&
+            !(access.access.accessFlags & (IsStencil ? RPS_ACCESS_STENCIL_WRITE_BIT : NonStencilWriteAccessMask)))
+            return RPS_VK_ATTACHMENT_STORE_OP_NONE;
+#endif
+
+        if (access.access.accessFlags & DiscardAccessMask)
+            return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
         return VK_ATTACHMENT_STORE_OP_STORE;
-        // TODO: Mark final accesses to for DONT_CARE op.
     }
 
     VkAttachmentLoadOp GetVkStencilLoadOp(const CmdAccessInfo& access, const NodeDeclRenderPassInfo& rpInfo)
     {
-        // TODO: Separate depth/stencil clear control
         if (access.access.accessFlags & (RPS_ACCESS_STENCIL_WRITE_BIT | RPS_ACCESS_STENCIL_READ_BIT))
-            return GetVkLoadOp(access, rpInfo);
+            return GetVkLoadOp<StencilOp>(access, rpInfo);
         else
             return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     }
 
-    VkAttachmentStoreOp GetVkStencilStoreOp(const CmdAccessInfo& access)
+    VkAttachmentStoreOp GetVkStencilStoreOp(const CmdAccessInfo& access, bool bLoadStoreOpNoneSupported)
     {
         if (access.access.accessFlags & (RPS_ACCESS_STENCIL_WRITE_BIT | RPS_ACCESS_STENCIL_READ_BIT))
-            return GetVkStoreOp(access);
+            return GetVkStoreOp<StencilOp>(access, bLoadStoreOpNoneSupported);
         else
             return VK_ATTACHMENT_STORE_OP_DONT_CARE;
     }
+
+    static constexpr bool UseRenderPassBarriersTrue  = true;
+    static constexpr bool UseRenderPassBarriersFalse = false;
 
     template <bool bUseRenderPassBarriers>
     static inline void GetVkAttachmentDescription(VkAttachmentDescription*      pOut,
                                                   const CmdAccessInfo&          access,
                                                   const ResourceInstance&       resourceInfo,
-                                                  const NodeDeclRenderPassInfo& rpInfo)
+                                                  const NodeDeclRenderPassInfo& rpInfo,
+                                                  bool                          bStoreOpNoneSupported)
     {
         RPS_ASSERT(resourceInfo.desc.IsImage());
 
@@ -997,11 +1097,11 @@ namespace rps
         pOut->format         = rpsFormatToVK(viewFormat);
         pOut->samples        = rpsVkGetSampleCount(resourceInfo.desc.image.sampleCount);
         pOut->loadOp         = GetVkLoadOp(access, rpInfo);
-        pOut->storeOp        = GetVkStoreOp(access);
+        pOut->storeOp        = GetVkStoreOp(access, bStoreOpNoneSupported);
         pOut->stencilLoadOp  = GetVkStencilLoadOp(access, rpInfo);
-        pOut->stencilStoreOp = GetVkStencilStoreOp(access);
-        pOut->initialLayout  = GetVkImageLayout<true>(initialAccess);
-        pOut->finalLayout    = GetVkImageLayout<false>(finalAccess);
+        pOut->stencilStoreOp = GetVkStencilStoreOp(access, bStoreOpNoneSupported);
+        pOut->initialLayout  = GetVkImageLayout<IsSrcLayoutTrue>(initialAccess);
+        pOut->finalLayout    = GetVkImageLayout<IsSrcLayoutFalse>(finalAccess);
     }
 
     RpsResult VKRuntimeBackend::CreateRenderPasses(const RenderGraphUpdateContext& context,
@@ -1013,6 +1113,10 @@ namespace rps
         const auto& resources   = context.renderGraph.GetResourceInstances();
         const auto& runtimeCmds = context.renderGraph.GetRuntimeCmdInfos();
         const auto& cmdAccesses = context.renderGraph.GetCmdAccessInfos();
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
+
+        const bool bStoreOpNoneSupported =
+            rpsAnyBitsSet(m_device.GetRuntimeFlags(), RPS_VK_RUNTIME_FLAG_STORE_OP_NONE_SUPPORTED);
 
         auto& currResources = m_frameResources[m_currentResourceFrame];
 
@@ -1080,14 +1184,17 @@ namespace rps
 
                 auto& accessInfo = cmdAccessInfos[paramAccessInfo.accessOffset + rtParamRef.arrayOffset];
 
-                GetVkAttachmentDescription<false>(
-                    &attchmtDescs[attchmtCount], accessInfo, resources[accessInfo.resourceId], nodeDeclRenderPassInfo);
+                GetVkAttachmentDescription<UseRenderPassBarriersFalse>(&attchmtDescs[attchmtCount],
+                                                                       accessInfo,
+                                                                       resources[accessInfo.resourceId],
+                                                                       nodeDeclRenderPassInfo,
+                                                                       bStoreOpNoneSupported);
 
                 const uint32_t rtSlot = paramAccessInfo.baseSemanticIndex + rtParamRef.arrayOffset;
 
                 auto& colorRef      = colorRefs[rtSlot];
                 colorRef.attachment = attchmtCount;
-                colorRef.layout     = GetVkImageLayout<false>(paramAccessInfo.access);
+                colorRef.layout     = GetVkImageLayout<IsSrcLayoutFalse>(paramAccessInfo.access);
 
                 auto& resolveRef      = resolveRefs[rtSlot];
                 resolveRef.attachment = VK_ATTACHMENT_UNUSED;
@@ -1108,11 +1215,14 @@ namespace rps
 
                 auto& accessInfo = cmdAccessInfos[paramAccessInfo.accessOffset];
 
-                GetVkAttachmentDescription<false>(
-                    &attchmtDescs[attchmtCount], accessInfo, resources[accessInfo.resourceId], nodeDeclRenderPassInfo);
+                GetVkAttachmentDescription<UseRenderPassBarriersFalse>(&attchmtDescs[attchmtCount],
+                                                                       accessInfo,
+                                                                       resources[accessInfo.resourceId],
+                                                                       nodeDeclRenderPassInfo,
+                                                                       bStoreOpNoneSupported);
 
                 depthRef.attachment = numRtvs;
-                depthRef.layout     = GetVkImageLayout<false>(accessInfo.access);
+                depthRef.layout     = GetVkImageLayout<IsSrcLayoutFalse>(accessInfo.access);
                 attchmtCount++;
 
                 bHasDsv = true;
@@ -1129,8 +1239,11 @@ namespace rps
 
                 auto& accessInfo = cmdAccessInfos[paramAccessInfo.accessOffset + resolveParamRef.arrayOffset];
 
-                GetVkAttachmentDescription<false>(
-                    &attchmtDescs[attchmtCount], accessInfo, resources[accessInfo.resourceId], nodeDeclRenderPassInfo);
+                GetVkAttachmentDescription<UseRenderPassBarriersFalse>(&attchmtDescs[attchmtCount],
+                                                                       accessInfo,
+                                                                       resources[accessInfo.resourceId],
+                                                                       nodeDeclRenderPassInfo,
+                                                                       bStoreOpNoneSupported);
 
                 const uint32_t rtSlot = paramAccessInfo.baseSemanticIndex + resolveParamRef.arrayOffset;
 
@@ -1138,7 +1251,7 @@ namespace rps
 
                 auto& resolveRef      = resolveRefs[rtSlot];
                 resolveRef.attachment = attchmtCount;
-                resolveRef.layout     = GetVkImageLayout<false>(accessInfo.access);
+                resolveRef.layout     = GetVkImageLayout<IsSrcLayoutFalse>(accessInfo.access);
 
                 attchmtCount++;
             }
@@ -1197,7 +1310,7 @@ namespace rps
             rpInfo.pDependencies   = nullptr;
 
             auto pVkRP = &currResources.renderPasses[rpIndex];
-            RPS_V_RETURN(VkResultToRps(vkCreateRenderPass(hVkDevice, &rpInfo, nullptr, pVkRP)));
+            RPS_V_RETURN(VkResultToRps(RPS_VK_API_CALL(vkCreateRenderPass(hVkDevice, &rpInfo, nullptr, pVkRP))));
 
             RPS_ASSERT(pCmdInfo->pRenderPassInfo);
             auto& cmdRPInfo = *pCmdInfo->pRenderPassInfo;
@@ -1211,7 +1324,7 @@ namespace rps
             fbInfo.layers                  = 1;  // TODO
 
             auto pVkFB = &currResources.frameBuffers[rpIndex];
-            RPS_V_RETURN(VkResultToRps(vkCreateFramebuffer(hVkDevice, &fbInfo, nullptr, pVkFB)));  // TODO
+            RPS_V_RETURN(VkResultToRps(RPS_VK_API_CALL(vkCreateFramebuffer(hVkDevice, &fbInfo, nullptr, pVkFB))));
 
             if (clearValueCount > 0)
             {
@@ -1252,7 +1365,7 @@ namespace rps
         ArrayRef<VkImageLayout> subResLayouts = {&m_subResLayouts[m_resourceLayoutOffsets[resourceId]],
                                                  resInfo.numSubResources};
 
-        const VkImageLayout layout             = GetVkImageLayout<false>(accessInfo.access);
+        const VkImageLayout layout             = GetVkImageLayout<IsSrcLayoutFalse>(accessInfo.access);
         const uint32_t      numSubResPerAspect = resInfo.desc.GetImageArrayLayers() * resInfo.desc.image.mipLevels;
 
         for (uint32_t iAspect = 0; iAspect < 2; iAspect++)
@@ -1296,7 +1409,7 @@ namespace rps
             return m_subResLayouts[layoutInfoOffset];
         }
 
-        return GetVkImageLayout<false>(accessInfo.access);
+        return GetVkImageLayout<IsSrcLayoutFalse>(accessInfo.access);
     }
 
     void VKRuntimeBackend::ProcessBarrierBatch(const RenderGraphUpdateContext& context,
@@ -1304,7 +1417,7 @@ namespace rps
     {
         auto& aliasingInfos       = context.renderGraph.GetResourceAliasingInfos();
         auto& resourceInstances   = context.renderGraph.GetResourceInstances();
-        auto& transitions         = context.renderGraph.GetTransitions();
+        auto  transitions         = context.renderGraph.GetTransitions().crange_all();
         auto  transitionRangeCmds = transitionRange.Get(context.renderGraph.GetRuntimeCmdInfos());
 
         VKBarrierBatch currBatch = {};
@@ -1313,21 +1426,47 @@ namespace rps
         currBatch.bufferBarriers.SetRange(uint32_t(m_bufferBarriers.size()), 0);
         currBatch.memoryBarriers.SetRange(uint32_t(m_memoryBarriers.size()), 0);
 
-        constexpr RpsAccessAttr noAccess = {RPS_ACCESS_UNKNOWN, RPS_SHADER_STAGE_NONE};
-
         for (uint32_t idx = 0; idx < transitionRangeCmds.size(); idx++)
         {
             auto& cmd = transitionRangeCmds[idx];
             RPS_ASSERT(cmd.isTransition);
+
+            // For aliased resources, wait on deactivating final access pipeline stages.
+            for (auto& aliasing : cmd.aliasingInfos.Get(aliasingInfos))
+            {
+                if (aliasing.srcDeactivating)
+                {
+                    if (aliasing.srcResourceIndex != RPS_RESOURCE_ID_INVALID)
+                    {
+                        auto& srcResInfo = resourceInstances[aliasing.srcResourceIndex];
+
+                        for (auto& finalAccess :
+                             srcResInfo.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
+                        {
+                            const auto prevAccess =
+                                RenderGraph::CalcPreviousAccess(finalAccess.prevTransition, transitions, srcResInfo);
+
+                            auto srcAccessInfo =
+                                GetVKAccessInfo<IsRenderPassAttachmentFalse, IsSrcAccessTrue>(prevAccess);
+
+                            currBatch.srcStage |= srcAccessInfo.stages;
+                        }
+                    }
+                    else
+                    {
+                        currBatch.srcStage |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+                        break;
+                    }
+                }
+            }
 
             if (cmd.cmdId < CMD_ID_PREAMBLE)
             {
                 const auto& currTrans   = transitions[cmd.cmdId];
                 const auto& resInstance = resourceInstances[currTrans.access.resourceId];
 
-                const auto& prevAccess = (currTrans.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                             ? transitions[currTrans.prevTransition].access.access
-                                             : (resInstance.isPendingInit ? noAccess : resInstance.initialAccess);
+                const auto prevAccess =
+                    RenderGraph::CalcPreviousAccess(currTrans.prevTransition, transitions, resInstance);
 
                 if (resInstance.desc.IsImage())
                 {
@@ -1348,35 +1487,6 @@ namespace rps
 
                     AppendBufferBarrier(hBuffer, currBatch, prevAccess, currTrans.access.access, resInstance);
                 }
-
-                // For aliased resources, wait on deactivating final access pipeline stages.
-                for (auto& aliasing : cmd.aliasingInfos.Get(aliasingInfos))
-                {
-                    if (aliasing.srcDeactivating)
-                    {
-                        if (aliasing.srcResourceIndex != RPS_RESOURCE_ID_INVALID)
-                        {
-                            auto& srcResInfo = resourceInstances[aliasing.srcResourceIndex];
-
-                            for (auto& finalAccess :
-                                 srcResInfo.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
-                            {
-                                if (finalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                {
-                                    auto& finalAccessAttr = transitions[finalAccess.prevTransition].access.access;
-                                    auto  srcAccessInfo   = GetVKAccessInfo<false, true>(finalAccessAttr);
-
-                                    currBatch.srcStage |= srcAccessInfo.stages;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            currBatch.srcStage |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-                            break;
-                        }
-                    }
-                }
             }
             else if (cmd.cmdId == CMD_ID_POSTAMBLE)
             {
@@ -1386,34 +1496,34 @@ namespace rps
                 {
                     auto& resInstance = resourceInstances[iRes];
 
-                    if (!resInstance.isAliased)
+                    const bool bResHasMemoryBound = resInstance.hRuntimeResource && !resInstance.isPendingCreate;
+
+                    if (!resInstance.isAliased && bResHasMemoryBound &&
+                        (resInstance.initialAccess.accessFlags != RPS_ACCESS_UNKNOWN))
                     {
                         for (auto& finalAccess :
                              resInstance.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
                         {
-                            if (finalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
+                            const auto prevAccess =
+                                RenderGraph::CalcPreviousAccess(finalAccess.prevTransition, transitions, resInstance);
+
+                            if (resInstance.desc.IsImage())
                             {
-                                if (resInstance.desc.IsImage())
-                                {
-                                    auto hImage = FromHandle<VkImage>(resInstance.hRuntimeResource);
+                                auto hImage = FromHandle<VkImage>(resInstance.hRuntimeResource);
 
-                                    AppendImageBarrier(hImage,
-                                                       currBatch,
-                                                       transitions[finalAccess.prevTransition].access.access,
-                                                       resInstance.initialAccess,
-                                                       resInstance,
-                                                       finalAccess.range);
-                                }
-                                else if (resInstance.desc.IsBuffer())
-                                {
-                                    auto hBuffer = FromHandle<VkBuffer>(resInstance.hRuntimeResource);
+                                AppendImageBarrier(hImage,
+                                                   currBatch,
+                                                   prevAccess,
+                                                   resInstance.initialAccess,
+                                                   resInstance,
+                                                   finalAccess.range);
+                            }
+                            else if (resInstance.desc.IsBuffer())
+                            {
+                                auto hBuffer = FromHandle<VkBuffer>(resInstance.hRuntimeResource);
 
-                                    AppendBufferBarrier(hBuffer,
-                                                        currBatch,
-                                                        transitions[finalAccess.prevTransition].access.access,
-                                                        resInstance.initialAccess,
-                                                        resInstance);
-                                }
+                                AppendBufferBarrier(
+                                    hBuffer, currBatch, prevAccess, resInstance.initialAccess, resInstance);
                             }
                         }
                     }
@@ -1447,8 +1557,8 @@ namespace rps
     {
         auto* pImgBarrier = m_imageBarriers.grow(1, {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER});
 
-        auto srcAccessInfo = GetVKAccessInfo<false, true>(beforeAccess);
-        auto dstAccessInfo = GetVKAccessInfo<false, false>(afterAccess);
+        auto srcAccessInfo = GetVKAccessInfo<IsRenderPassAttachmentFalse, IsSrcAccessTrue>(beforeAccess);
+        auto dstAccessInfo = GetVKAccessInfo<IsRenderPassAttachmentFalse, IsSrcAccessFalse>(afterAccess);
 
         barrierBatch.srcStage |= srcAccessInfo.stages;
         barrierBatch.dstStage |= dstAccessInfo.stages;
@@ -1476,8 +1586,8 @@ namespace rps
     {
         auto* pBufBarrier = m_bufferBarriers.grow(1, {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER});
 
-        auto srcAccessInfo = GetVKAccessInfo<false, true>(beforeAccess);
-        auto dstAccessInfo = GetVKAccessInfo<false, false>(afterAccess);
+        auto srcAccessInfo = GetVKAccessInfo<IsRenderPassAttachmentFalse, IsSrcAccessTrue>(beforeAccess);
+        auto dstAccessInfo = GetVKAccessInfo<IsRenderPassAttachmentFalse, IsSrcAccessFalse>(afterAccess);
 
         barrierBatch.srcStage |= srcAccessInfo.stages;
         barrierBatch.dstStage |= dstAccessInfo.stages;
@@ -1494,17 +1604,17 @@ namespace rps
     void VKRuntimeBackend::RecordBarrierBatch(VkCommandBuffer hCmdBuf, uint32_t barrierBatch) const
     {
         const auto& batch = m_barrierBatches[barrierBatch];
-
-        vkCmdPipelineBarrier(hCmdBuf,
-                             batch.srcStage,
-                             batch.dstStage,
-                             VK_DEPENDENCY_BY_REGION_BIT,
-                             batch.memoryBarriers.size(),
-                             batch.memoryBarriers.Get(m_memoryBarriers).data(),
-                             batch.bufferBarriers.size(),
-                             batch.bufferBarriers.Get(m_bufferBarriers).data(),
-                             batch.imageBarriers.size(),
-                             batch.imageBarriers.Get(m_imageBarriers).data());
+        RPS_USE_VK_FUNCTIONS(m_device.GetVkFunctions());
+        RPS_VK_API_CALL(vkCmdPipelineBarrier(hCmdBuf,
+                                             batch.srcStage,
+                                             batch.dstStage,
+                                             VK_DEPENDENCY_BY_REGION_BIT,
+                                             batch.memoryBarriers.size(),
+                                             batch.memoryBarriers.Get(m_memoryBarriers).data(),
+                                             batch.bufferBarriers.size(),
+                                             batch.bufferBarriers.Get(m_bufferBarriers).data(),
+                                             batch.imageBarriers.size(),
+                                             batch.imageBarriers.Get(m_imageBarriers).data()));
     }
 
     template <typename ViewHandleType>

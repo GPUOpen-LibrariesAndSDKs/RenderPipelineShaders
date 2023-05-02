@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps_overlay_state.hpp"
 
@@ -29,12 +29,12 @@ namespace rps
 
     static void OverlayImGuiCbReadLine(ImGuiContext* ctx, ImGuiSettingsHandler* pHandler, void* entry, const char* line)
     {
-        if (pHandler == nullptr)
+        if ((pHandler == nullptr) || (line == nullptr))
             return;
 
         const size_t  nameLen       = strlen(line);
         DrawSettings* pDrawSettings = static_cast<DrawSettings*>(pHandler->UserData);
-        if ((line == nullptr) || (nameLen == 0))
+        if (nameLen == 0)
         {
             return;
         }
@@ -206,7 +206,9 @@ namespace rps
         ImGui::NewLine();
         ImGui::NewLine();
 
-        constexpr ImVec2 optionWindowSize = {200, 250};
+        constexpr ImVec2 SettingsPanelMinSize = {200, 200};
+
+        m_settingsPanelSize = ImMax(m_settingsPanelSize, SettingsPanelMinSize);
 
         ImVec4 childBg = ImGui::GetStyleColorVec4(ImGuiCol_ChildBg);
         childBg.w      = 1.0f;
@@ -228,11 +230,6 @@ namespace rps
                 m_drawSettings.bDrawSettingsSelector = !m_drawSettings.bDrawSettingsSelector;
                 bSettingsChanged                     = true;
             }
-            else if (!ImGui::IsMouseHoveringRect(currentPos, currentPos + optionWindowSize, false))
-            {
-                bSettingsChanged |= m_drawSettings.bDrawSettingsSelector;
-                m_drawSettings.bDrawSettingsSelector = false;
-            }
         }
         ImGui::EndChild();
         ImGui::EndChild();
@@ -248,33 +245,51 @@ namespace rps
             childBg.w      = 1.0f;
 
             ImGui::PushStyleColor(ImGuiCol_ChildBg, childBg);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2());
             //Multiple nested children to make sure the window is not overdrawn by the pDrawlist->Add* calls in other windows
-            ImGui::BeginChild("SettingsSelectorDepthPadding", optionWindowSize);
-            ImGui::BeginChild("SettingsSelectorDepthPadding1", optionWindowSize);
-            ImGui::PopStyleVar(1);
-            ImGui::BeginChild("SettingsSelectorDepthPadding2", optionWindowSize, true);
+            const ImVec2 windowPadding = ImGui::GetStyle().WindowPadding;
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2());
+            ImGui::BeginChild("SettingsSelectorDepthPadding", m_settingsPanelSize);
+            ImGui::BeginChild("SettingsSelectorDepthPadding1");
+            ImGui::BeginChild("SettingsSelectorDepthPadding2");
             ImGui::BeginChild("SettingsSelectorDepthPadding3");
-            ImGui::BeginChild("SettingsSelectorDepthPadding4");
+            ImGui::PopStyleVar(1);
+            ImGui::BeginChild("SettingsSelectorDepthPadding4", m_settingsPanelSize, true);
+
+            UIRect contentRect = {ImGui::GetCursorScreenPos(), ImGui::GetCursorScreenPos()};
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !bSettingsChanged &&
+                !ImGui::IsMouseHoveringRect(
+                    contentRect.start - windowPadding, contentRect.start + m_settingsPanelSize - windowPadding, false))
+            {
+                bSettingsChanged |= m_drawSettings.bDrawSettingsSelector;
+                m_drawSettings.bDrawSettingsSelector = false;
+            }
+
+            auto addCheckbox = [&](const char* label, bool* pValue) {
+                bSettingsChanged |= ImGui::Checkbox(label, pValue);
+                contentRect.end = ImMax(contentRect.end, ImGui::GetItemRectMax());
+            };
 
             if (ImGui::CollapsingHeader("Resources", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                bSettingsChanged |= ImGui::Checkbox("Draw Accesses", &m_drawSettings.bDrawResourceAccesses);
-                bSettingsChanged |= ImGui::Checkbox("Draw Transitions", &m_drawSettings.bDrawResourceTransitions);
-                bSettingsChanged |= ImGui::Checkbox("Draw Connectors", &m_drawSettings.bDrawResourceConnectors);
-                bSettingsChanged |=
-                    ImGui::Checkbox("Draw Tooltips## for Resources", &m_drawSettings.bDrawResourceTooltips);
+                addCheckbox("Draw Accesses", &m_drawSettings.bDrawResourceAccesses);
+                addCheckbox("Draw Transitions", &m_drawSettings.bDrawResourceTransitions);
+                addCheckbox("Draw Connectors", &m_drawSettings.bDrawResourceConnectors);
+                addCheckbox("Draw Tooltips## for Resources", &m_drawSettings.bDrawResourceTooltips);
+                addCheckbox("Draw subresource data lifetime markers",
+                            &m_drawSettings.bDrawSubResourceDataLifetimeMarkers);
             }
 
             if (ImGui::CollapsingHeader("Heaps", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                bSettingsChanged |= ImGui::Checkbox("Draw Tooltips## for Heaps", &m_drawSettings.bDrawHeapTooltips);
+                addCheckbox("Draw Tooltips## for Heaps", &m_drawSettings.bDrawHeapTooltips);
             }
 
             if (ImGui::CollapsingHeader("Graph", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                bSettingsChanged |= ImGui::Checkbox("Draw Tooltips## for Graph", &m_drawSettings.bDrawGraphTooltips);
+                addCheckbox("Draw Tooltips## for Graph", &m_drawSettings.bDrawGraphTooltips);
             }
+
             ImGui::EndChild();
             ImGui::EndChild();
             ImGui::EndChild();
@@ -282,6 +297,8 @@ namespace rps
             ImGui::EndChild();
 
             ImGui::PopStyleColor();
+
+            m_settingsPanelSize = ImMax(m_settingsPanelSize, contentRect.GetSize() + windowPadding * 2);
         }
 
         ImGui::EndGroup();
@@ -598,6 +615,7 @@ namespace rps
             {"bDrawResourceTransitions", bDrawResourceTransitions},
             {"bDrawResourceConnectors", bDrawResourceConnectors},
             {"bDrawResourceTooltips", bDrawResourceTooltips},
+            {"bDrawSubResourceDataLifetimeMarkers", bDrawSubResourceDataLifetimeMarkers},
             {"bDrawHeapTooltips", bDrawHeapTooltips},
             {"bDrawGraphTooltips", bDrawGraphTooltips},
         };

@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
@@ -13,12 +13,14 @@
 #include "utils/rps_test_common.h"
 
 #include <random>
+#include <numeric>
 
 RPS_DECLARE_RPSL_ENTRY(test_scheduler, program_order);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler, memory_saving);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler, random_order);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler, dead_code_elimination);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler, gfx_comp_batching);
+RPS_DECLARE_RPSL_ENTRY(test_scheduler, subres_data_lifetime);
 
 struct NodeOrderChecker
 {
@@ -52,7 +54,8 @@ public:
                  uint32_t                                          numArgs,
                  RpsScheduleFlags                                  scheduleFlags,
                  RpsDiagnosticFlags                                diagnosticFlags = RPS_DIAGNOSTIC_ENABLE_ALL,
-                 std::function<void(const std::vector<uint32_t>&)> customAssertion = {})
+                 std::function<void(const std::vector<uint32_t>&)> customAssertion = {},
+                 std::function<void(const RpsCmdCallbackContext* pContext, uint32_t id)> customNodeCallback = {})
     {
         RpsRandomNumberGenerator randGen = {};
         randGen.pContext                 = this;
@@ -74,6 +77,8 @@ public:
         REQUIRE_RPS_OK(rpsRenderGraphUpdate(m_renderGraph, &updateInfo));
 
         REQUIRE_RPS_OK(rpsRenderGraphGetBatchLayout(m_renderGraph, &batchLayout));
+
+        m_customNodeCallback = customNodeCallback;
 
         for (uint32_t iBatch = 0; iBatch < batchLayout.numCmdBatches; iBatch++)
         {
@@ -99,6 +104,11 @@ public:
     void CmdCallback(const RpsCmdCallbackContext* pContext, uint32_t id)
     {
         m_actualSequence.push_back(id);
+
+        if (m_customNodeCallback)
+        {
+            m_customNodeCallback(pContext, id);
+        }
     }
 
     void PushExpected(uint32_t value)
@@ -109,6 +119,11 @@ public:
     void PushExpected(std::initializer_list<uint32_t> values)
     {
         m_expectedSequence.insert(m_expectedSequence.end(), values);
+    }
+
+    void PushExpected(const std::vector<uint32_t>& values)
+    {
+        m_expectedSequence.insert(m_expectedSequence.end(), values.begin(), values.end());
     }
 
     void PushExpectedRange(uint32_t begin, uint32_t end, int32_t step)
@@ -168,6 +183,7 @@ private:
 
     std::vector<uint32_t> m_actualSequence;
     std::vector<uint32_t> m_expectedSequence;
+    std::function<void(const RpsCmdCallbackContext* pContext, uint32_t id)> m_customNodeCallback;
 };
 
 TEST_CASE("TestScheduler")
@@ -341,6 +357,111 @@ TEST_CASE("TestScheduler")
     // Prefer minimize compute & gfx switching:
     orderChecker.PushExpected({0, 3, 4, 1, 2, 5, 6, 7, 8, 9, 10, 11});
     orderChecker.Execute(args, 1, RPS_SCHEDULE_MINIMIZE_COMPUTE_GFX_SWITCH_BIT, RPS_DIAGNOSTIC_ENABLE_ALL);
+
+    orderChecker.DestroyRenderGraph();
+
+    // Check lifetime / Discard flags
+
+    orderChecker.CreateRenderGraph(rpsTestLoadRpslEntry(test_scheduler, subres_data_lifetime));
+
+    // Default behavior, expect Gfx & Compute are interleaved:
+
+    auto checkDiscardFlags = [](const RpsCmdCallbackContext* pContext, uint32_t nodeId) {
+        // clang-format off
+        static struct
+        {
+            uint32_t                              nodeId;
+            std::initializer_list<RpsAccessFlags> expectedDiscardAccesses;
+        } expected [] = {
+            {0, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {1, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT, 0}},
+            {2, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+            {3, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {4, {0}}, // Not all sub-resources are discarded.
+            {5, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT, RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+            {6, {0}},
+            {7, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {8, {0}},
+            {9, {0, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT}},
+            {10, {0, RPS_ACCESS_DISCARD_DATA_AFTER_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT}},
+            {11, {0, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT}},
+            {12, {0, RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+            {13, {0, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT}},
+            {14, {0, 0}},
+            {15, {0, RPS_ACCESS_DISCARD_DATA_AFTER_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT}},
+            {16, {0, RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+            {17, {0, 0}},
+
+            {18, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {19, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {20, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+            {21, {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+           
+            {22, {
+                    0,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT,
+                    0,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    0, 0,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+
+            {23, {
+                    0,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT, RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT | RPS_ACCESS_DISCARD_DATA_BEFORE_BIT,
+                    RPS_ACCESS_DISCARD_DATA_AFTER_BIT, RPS_ACCESS_DISCARD_DATA_AFTER_BIT, RPS_ACCESS_DISCARD_DATA_AFTER_BIT,
+                    RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+
+            {24, {0, 0}},
+            {25, {0, 0}},
+            {26, {0, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+
+            {27, {RPS_ACCESS_DISCARD_DATA_AFTER_BIT, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+
+            {28, {0, 0}},
+            {29, {0, RPS_ACCESS_DISCARD_DATA_BEFORE_BIT}},
+            {30, {0, RPS_ACCESS_DISCARD_DATA_AFTER_BIT}},
+        };
+        // clang-format on
+
+        static constexpr RpsAccessFlags DiscardFlags =
+            RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_DISCARD_DATA_AFTER_BIT |
+            RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT;
+
+        REQUIRE(nodeId < RPS_TEST_COUNTOF(expected));
+        REQUIRE(nodeId == expected[nodeId].nodeId);
+
+        for (uint32_t iArg = 1; iArg < pContext->numArgs; iArg++)
+        {
+            if ((iArg - 1) < expected[nodeId].expectedDiscardAccesses.size())
+            {
+                RpsResourceAccessInfo accessInfo = {};
+                REQUIRE_RPS_OK(rpsCmdGetArgResourceAccessInfo(pContext, iArg, &accessInfo));
+                REQUIRE((accessInfo.access.accessFlags & DiscardFlags) ==
+                        *(expected[nodeId].expectedDiscardAccesses.begin() + (iArg - 1)));
+            }
+        }
+    };
+
+    auto iotaFn = [](uint32_t begin, uint32_t count) {
+        std::vector<uint32_t> result;
+        result.resize(count);
+        std::iota(result.begin(), result.end(), begin);
+        return result;
+    };
+
+    orderChecker.PushExpected(iotaFn(0, 31));
+    orderChecker.Execute(args,
+                         1,
+                         RPS_SCHEDULE_KEEP_PROGRAM_ORDER_BIT | RPS_SCHEDULE_DISABLE_DEAD_CODE_ELIMINATION_BIT,
+                         RPS_DIAGNOSTIC_ENABLE_ALL,
+                         {},
+                         checkDiscardFlags);
 
     orderChecker.DestroyRenderGraph();
 

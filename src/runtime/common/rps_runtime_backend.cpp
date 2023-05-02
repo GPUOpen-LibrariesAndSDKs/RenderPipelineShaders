@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "runtime/common/rps_render_graph.hpp"
 #include "runtime/common/rps_render_graph_signature.hpp"
@@ -23,10 +23,51 @@ namespace rps
         const uint32_t maxExternResources = m_renderGraph.GetSignature().GetMaxExternalResourceCount();
         RPS_ASSERT(maxExternResources <= resources.size());
 
-        RPS_V_RETURN(
-            CreateResources(context, resources.range(maxExternResources, resources.size() - maxExternResources)));
+        auto internalResources = resources.range(maxExternResources, resources.size() - maxExternResources);
+
+        RPS_V_RETURN(CreateResources(context, internalResources));
 
         RPS_V_RETURN(CreateCommandResources(context));
+
+        RPS_V_RETURN(UpdateResourceFinalAccessStates(context, internalResources));
+
+        return RPS_OK;
+    }
+
+    RpsResult RuntimeBackend::UpdateResourceFinalAccessStates(RenderGraphUpdateContext&  context,
+                                                              ArrayRef<ResourceInstance> resourceInstances)
+    {
+        // The main purpose is to propagate current frame initialAccess to prevFinalAccess.
+        // Backends are expected to transition resources to current initial state, if they are:
+        // - Persistent (including temporal / external).
+        // - If the API doesn't support transitioning from "unknown" layout, e.g. D3D12 without enhanced barriers.
+
+        // Skip if runtime command is empty.
+        RPS_RETURN_OK_IF(context.renderGraph.GetRuntimeCmdInfos().empty());
+
+        const uint32_t lastCmdId = context.renderGraph.GetRuntimeCmdInfos().rbegin()->GetTransitionId();
+        RPS_RETURN_ERROR_IF_MSG(lastCmdId != CMD_ID_POSTAMBLE,
+                                RPS_ERROR_INVALID_OPERATION,
+                                "Expect the last runtime command to have id (%u) = CMD_ID_POSTAMBLE.",
+                                lastCmdId);
+
+        const bool bResetAliasedResourceToNoAccess = ShouldResetAliasedResourcesPrevFinalAccess();
+
+        for (uint32_t iRes = 0, numRes = uint32_t(resourceInstances.size()); iRes < numRes; iRes++)
+        {
+            auto& resInstance = resourceInstances[iRes];
+
+            RPS_ASSERT(!(resInstance.isAliased && resInstance.IsPersistent()));
+
+            const bool bIsCreated = resInstance.hRuntimeResource && !resInstance.isPendingCreate;
+
+            if (!resInstance.isExternal && bIsCreated)
+            {
+                resInstance.prevFinalAccess = (bResetAliasedResourceToNoAccess && resInstance.isAliased)
+                                                  ? AccessAttr{}
+                                                  : resInstance.initialAccess;
+            }
+        }
 
         return RPS_OK;
     }

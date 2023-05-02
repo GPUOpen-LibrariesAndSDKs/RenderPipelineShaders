@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "runtime/common/rps_render_graph.hpp"
 
@@ -41,10 +41,13 @@ namespace rps
         if (src.HasTransitionInfo())
         {
             const TransitionInfo& transInfo = m_transitions[src.cmdId];
-            dst.transition.prevAccess       = (transInfo.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                                  ? m_transitions[transInfo.prevTransition].access.access
-                                                  : GetResourceInstance(transInfo.access.resourceId).initialAccess;
-            dst.transition.nextAccess       = transInfo.access.access;
+
+            const auto prevAccess = CalcPreviousAccess(transInfo.prevTransition,
+                                                       GetTransitions().range_all(),
+                                                       GetResourceInstance(transInfo.access.resourceId));
+
+            dst.transition.prevAccess = prevAccess;
+            dst.transition.nextAccess = transInfo.access.access;
             transInfo.access.range.Get(dst.transition.range);
             dst.transition.resourceIndex = transInfo.access.resourceId;
         }

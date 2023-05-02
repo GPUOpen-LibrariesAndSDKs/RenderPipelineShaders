@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_VK_RUNTIME_BACKEND_H
-#define RPS_VK_RUNTIME_BACKEND_H
+#ifndef RPS_VK_RUNTIME_BACKEND_HPP
+#define RPS_VK_RUNTIME_BACKEND_HPP
 
 #include "runtime/common/rps_render_graph.hpp"
 #include "runtime/vk/rps_vk_runtime_device.hpp"
@@ -116,6 +116,11 @@ namespace rps
             return rpsVKCommandBufferFromHandle(context.hCommandBuffer);
         }
 
+        const VKRuntimeDevice& GetVkRuntimeDevice() const
+        {
+            return m_device;
+        }
+
     protected:
         virtual RpsResult UpdateFrame(const RenderGraphUpdateContext& context) override final;
         virtual RpsResult CreateHeaps(const RenderGraphUpdateContext& context, ArrayRef<HeapInfo> heaps) override final;
@@ -199,36 +204,39 @@ namespace rps
                 pendingBuffers.reset(&arena);
             }
 
-            void DestroyDeviceResources(VkDevice hDevice)
-            {
+            void DestroyDeviceResources(VKRuntimeDevice& device)
+            {   
+                VkDevice hDevice = device.GetVkDevice();
+                RPS_USE_VK_FUNCTIONS(device.GetVkFunctions());
+
                 for (VkFramebuffer fb : frameBuffers)
                 {
-                    vkDestroyFramebuffer(hDevice, fb, nullptr);
+                    RPS_VK_API_CALL(vkDestroyFramebuffer(hDevice, fb, nullptr));
                 }
 
                 for (VkRenderPass rp : renderPasses)
                 {
-                    vkDestroyRenderPass(hDevice, rp, nullptr);
+                    RPS_VK_API_CALL(vkDestroyRenderPass(hDevice, rp, nullptr));
                 }
 
                 for (VkBufferView bufView : bufferViews)
                 {
-                    vkDestroyBufferView(hDevice, bufView, nullptr);
+                    RPS_VK_API_CALL(vkDestroyBufferView(hDevice, bufView, nullptr));
                 }
 
                 for (VkImageView imgView : imageViews)
                 {
-                    vkDestroyImageView(hDevice, imgView, nullptr);
+                    RPS_VK_API_CALL(vkDestroyImageView(hDevice, imgView, nullptr));
                 }
 
                 for (VkBuffer buf : pendingBuffers)
                 {
-                    vkDestroyBuffer(hDevice, buf, nullptr);
+                    RPS_VK_API_CALL(vkDestroyBuffer(hDevice, buf, nullptr));
                 }
 
                 for (VkImage img : pendingImages)
                 {
-                    vkDestroyImage(hDevice, img, nullptr);
+                    RPS_VK_API_CALL(vkDestroyImage(hDevice, img, nullptr));
                 }
 
                 pendingImages.clear();
@@ -250,4 +258,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //RPS_VK_RUNTIME_BACKEND_H
+#endif  //RPS_VK_RUNTIME_BACKEND_HPP

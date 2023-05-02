@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_RPSL_HOST_H_
-#define _RPS_RPSL_HOST_H_
+#ifndef RPS_RPSL_HOST_H
+#define RPS_RPSL_HOST_H
 
 /// @brief Bitflags for the type of entry calls.
 enum RpslEntryCallFlagBits
@@ -16,4 +16,4 @@ enum RpslEntryCallFlagBits
                                             ///  parent subprogram.
 };
 
-#endif  //_RPSL_HOST_H_
+#endif  //RPS_RPSL_HOST_H

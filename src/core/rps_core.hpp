@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_CORE_H_
-#define _RPS_CORE_H_
+#ifndef RPS_CORE_HPP
+#define RPS_CORE_HPP
 
 /// @defgroup Core
 
@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdarg>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <climits>
 
@@ -21,6 +22,7 @@
 #include <memory>
 #include <algorithm>
 #include <type_traits>
+#include <iterator>
 
 #ifdef RPS_HAS_INTRIN_H
 #include <intrin.h>
@@ -109,16 +111,16 @@ constexpr size_t RPS_COUNTOF(T const (&)[Count]) noexcept
 #define RPS_STATIC_ASSERT(Expr, Msg)                    static_assert(Expr, Msg)
 #define RPS_STATIC_ASSERT_STANDALONE(Expr, Msg, Prefix) static_assert(Expr, Msg)
 #else
-#define RPS_STATIC_ASSERT(Expr, Msg)                                                            \
-    do                                                                                          \
-    {                                                                                           \
-        typedef char RPS_CONCATENATE_INDIRECT(__RPS_STATIC_ASSERT_, __LINE__)[(Expr) ? 1 : -1]; \
-        (void)sizeof(RPS_CONCATENATE_INDIRECT(__RPS_STATIC_ASSERT_, __LINE__));                 \
+#define RPS_STATIC_ASSERT(Expr, Msg)                                                         \
+    do                                                                                       \
+    {                                                                                        \
+        typedef char RPS_CONCATENATE_INDIRECT(RPS_STATIC_ASSERT, __LINE__)[(Expr) ? 1 : -1]; \
+        (void)sizeof(RPS_CONCATENATE_INDIRECT(RPS_STATIC_ASSERT, __LINE__));                 \
     } while (0)
-#define RPS_STATIC_ASSERT_STANDALONE(Expr, Msg, Postfix)                                             \
-    static void RPS_CONCATENATE_INDIRECT(_RPS_STATIC_ASSERT_SCOPE_FUNC_##Postfix##_, __LINE__)(void) \
-    {                                                                                                \
-        RPS_STATIC_ASSERT(Expr, Msg);                                                                \
+#define RPS_STATIC_ASSERT_STANDALONE(Expr, Msg, Postfix)                                         \
+    static void RPS_CONCATENATE_INDIRECT(RPS_STATIC_ASSERT_SCOPE_FUNC_##Postfix, __LINE__)(void) \
+    {                                                                                            \
+        RPS_STATIC_ASSERT(Expr, Msg);                                                            \
     }
 #endif
 
@@ -147,28 +149,35 @@ static inline void RPS_ASSERT_OK(RpsResult result)
 
 #define RPS_TODO_RETURN_NOT_IMPLEMENTED() RPS_TODO_RETURN(RPS_ERROR_NOT_IMPLEMENTED, "Not Implemented!")
 
-void rpsDiagLog(const char* fmt, ...);
+void rpsDiagLog(RpsDiagLogLevel logLevel, const char* fmt, ...);
+
+#ifndef RPS_DIAG_LOG
+#define RPS_DIAG_LOG(Level, Expr, Fmt, ...) \
+    rpsDiagLog(Level, "\n[" #Level "] : '%s' " Fmt " @%s line %d.\n", Expr, __VA_ARGS__, __FILE__, __LINE__)
+#endif  //RPS_DIAG_LOG
 
 #ifndef RPS_DIAG
 /// A macro to output debug info about an expression to stderr.
 ///
-/// The expression itself, it's file and line of occurence will be printed to stderr
+/// The expression itself, it's file and line of occurrence will be printed to stderr
 /// output. Can be overwritten to any behaviour by specifying RPS_DIAG before including this header.
 ///
+/// @param Level            The <c><i>RpsDiagLogLevel</i></c> to print with.
 /// @param Expr             The expression to print.
 ///
 /// @ingroup Core
-#define RPS_DIAG(Expr) rpsDiagLog("\nRPS_DIAG: '%s' @%s line %d.\n", Expr, __FILE__, __LINE__)
+#define RPS_DIAG(Level, Expr) \
+    rpsDiagLog(Level, "\n[" #Level "] : '%s' @%s line %d.\n", Expr, __FILE__, __LINE__)
 #endif  //RPS_DIAG
 
 #ifndef RPS_DIAG_MSG
-#define RPS_DIAG_MSG(Expr, Fmt, ...) \
-    rpsDiagLog("\nRPS_DIAG: '%s':\n          '" Fmt "', @%s line %d.\n", Expr, __VA_ARGS__, __FILE__, __LINE__)
+#define RPS_DIAG_MSG(Level, Expr, Fmt, ...) \
+    RPS_DIAG_LOG(Level, Expr, ":\n          '" Fmt "',", __VA_ARGS__)
 #endif  //RPS_DIAG_MSG
 
 #ifndef RPS_DIAG_RESULT_CODE
-#define RPS_DIAG_RESULT_CODE(Expr, Err) \
-    rpsDiagLog("\nRPS_DIAG: '%s' Result = %s(%d) @%s line %d.\n", Expr, rpsResultGetName(Err), Err, __FILE__, __LINE__)
+#define RPS_DIAG_RESULT_CODE(Level, Expr, Err) \
+    RPS_DIAG_LOG(Level, Expr, "Result = %s(%d)", rpsResultGetName(Err), Err)
 #endif  //RPS_DIAG_RESULT_CODE
 
 /// A macro to return an error from the current function if an expression indicates this error.
@@ -178,15 +187,15 @@ void rpsDiagLog(const char* fmt, ...);
 /// @param Expr             The expression to check.
 ///
 /// @ingroup Core
-#define RPS_V_RETURN(Expr)                                     \
-    do                                                         \
-    {                                                          \
-        RpsResult _RPS_RESULT_TEMP__ = Expr;                   \
-        if (_RPS_RESULT_TEMP__ != RPS_OK)                      \
-        {                                                      \
-            RPS_DIAG_RESULT_CODE((#Expr), _RPS_RESULT_TEMP__); \
-            return _RPS_RESULT_TEMP__;                         \
-        }                                                      \
+#define RPS_V_RETURN(Expr)                                                  \
+    do                                                                      \
+    {                                                                       \
+        RpsResult RPS_RESULT_TEMP = Expr;                                   \
+        if (RPS_RESULT_TEMP != RPS_OK)                                      \
+        {                                                                   \
+            RPS_DIAG_RESULT_CODE(RPS_DIAG_ERROR, (#Expr), RPS_RESULT_TEMP); \
+            return RPS_RESULT_TEMP;                                         \
+        }                                                                   \
     } while (0)
 
 /// A macro to assign the result of an expression to a variable if that result indicates an error.
@@ -197,15 +206,15 @@ void rpsDiagLog(const char* fmt, ...);
 /// @param Expr             The expression to check
 ///
 /// @ingroup Core
-#define RPS_ASSIGN_IF_ERROR(Assignee, Expr)                    \
-    do                                                         \
-    {                                                          \
-        RpsResult _RPS_RESULT_TEMP__ = Expr;                   \
-        if (_RPS_RESULT_TEMP__ != RPS_OK)                      \
-        {                                                      \
-            Assignee = _RPS_RESULT_TEMP__;                     \
-            RPS_DIAG_RESULT_CODE((#Expr), _RPS_RESULT_TEMP__); \
-        }                                                      \
+#define RPS_ASSIGN_IF_ERROR(Assignee, Expr)                                 \
+    do                                                                      \
+    {                                                                       \
+        RpsResult RPS_RESULT_TEMP = Expr;                                   \
+        if (RPS_RESULT_TEMP != RPS_OK)                                      \
+        {                                                                   \
+            Assignee = RPS_RESULT_TEMP;                                     \
+            RPS_DIAG_RESULT_CODE(RPS_DIAG_ERROR, (#Expr), RPS_RESULT_TEMP); \
+        }                                                                   \
     } while (0)
 
 /// A macro to return a specific error code if a given condition is satisfied.
@@ -216,24 +225,27 @@ void rpsDiagLog(const char* fmt, ...);
 /// @param ErrCode          The error code to return in case the condition is satisfied.
 ///
 /// @ingroup Core
-#define RPS_RETURN_ERROR_IF(Cond, ErrorRet) \
-    do                                      \
-    {                                       \
-        if (Cond)                           \
-        {                                   \
-            RPS_DIAG((#Cond));              \
-            return ErrorRet;                \
-        }                                   \
+#define RPS_RETURN_ERROR_IF(Cond, ErrorRet)    \
+    do                                         \
+    {                                          \
+        if (Cond)                              \
+        {                                      \
+            RPS_DIAG(RPS_DIAG_ERROR, (#Cond)); \
+            return ErrorRet;                   \
+        }                                      \
     } while (0)
 
-#define RPS_RETURN_ERROR_IF_MSG(Cond, ErrorRet, ...) \
-    do                                               \
-    {                                                \
-        if (Cond)                                    \
-        {                                            \
-            RPS_DIAG_MSG((#Cond), __VA_ARGS__);      \
-            return ErrorRet;                         \
-        }                                            \
+// Workaround legacy MSVC preprocessor rescanning replacement list behavior.
+#define RPS_MACRO_FORWARD(X) X
+
+#define RPS_RETURN_ERROR_IF_MSG(Cond, ErrorRet, ...)                               \
+    do                                                                             \
+    {                                                                              \
+        if (Cond)                                                                  \
+        {                                                                          \
+            RPS_MACRO_FORWARD(RPS_DIAG_MSG(RPS_DIAG_ERROR, (#Cond), __VA_ARGS__)); \
+            return ErrorRet;                                                       \
+        }                                                                          \
     } while (0)
 
 /// A macro to return a specific error code if a given condition is satisfied.
@@ -249,7 +261,7 @@ void rpsDiagLog(const char* fmt, ...);
     {                                             \
         if (Cond)                                 \
         {                                         \
-            RPS_DIAG((#Cond));                    \
+            RPS_DIAG(RPS_DIAG_ERROR, (#Cond));    \
             (Assignee) = (ErrCode);               \
         }                                         \
     } while (0)
@@ -278,7 +290,7 @@ void rpsDiagLog(const char* fmt, ...);
     {                                           \
         if (!(Cond))                            \
         {                                       \
-            RPS_DIAG((#Cond));                  \
+            RPS_DIAG(RPS_DIAG_ERROR, (#Cond));  \
             return RPS_ERROR_INVALID_ARGUMENTS; \
         }                                       \
     } while (0)
@@ -288,14 +300,14 @@ void rpsDiagLog(const char* fmt, ...);
 /// @param Ptr              The pointer to check.
 ///
 /// @ingroup Core
-#define RPS_CHECK_ALLOC(Ptr)                \
-    do                                      \
-    {                                       \
-        if (!(Ptr))                         \
-        {                                   \
-            RPS_DIAG((#Ptr));               \
-            return RPS_ERROR_OUT_OF_MEMORY; \
-        }                                   \
+#define RPS_CHECK_ALLOC(Ptr)                  \
+    do                                        \
+    {                                         \
+        if (!(Ptr))                           \
+        {                                     \
+            RPS_DIAG(RPS_DIAG_ERROR, (#Ptr)); \
+            return RPS_ERROR_OUT_OF_MEMORY;   \
+        }                                     \
     } while (0)
 
 namespace rps
@@ -355,4 +367,4 @@ namespace rps
         typedef Rps##Type##_T handle_type; \
     };
 
-#endif  // #ifndef _RPS_CORE_H_
+#endif  // #ifndef RPS_CORE_HPP

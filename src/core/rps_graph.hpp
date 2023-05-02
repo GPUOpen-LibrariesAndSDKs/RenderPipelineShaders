@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_GRAPH_H_
-#define _RPS_GRAPH_H_
+#ifndef RPS_GRAPH_HPP
+#define RPS_GRAPH_HPP
 
 #include "rps_core.hpp"
 #include "rps_util.hpp"
@@ -136,7 +136,7 @@ namespace rps
             return &m_subgraphs[subgraphId];
         }
 
-        bool IsParentSubgraphOf(uint32_t parentSubgraphId, uint32_t childSubgraphId) const;
+        bool IsParentSubgraph(uint32_t parentSubgraphId, uint32_t childSubgraphId) const;
 
         void Reset();
 
@@ -152,4 +152,4 @@ namespace rps
     };
 }
 
-#endif  //_RPS_GRAPH_H_
+#endif  //RPS_GRAPH_HPP

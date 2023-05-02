@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_RENDER_GRAPH_H
-#define RPS_RENDER_GRAPH_H
+#ifndef RPS_RENDER_GRAPH_HPP
+#define RPS_RENDER_GRAPH_HPP
 
 #include "core/rps_core.hpp"
 #include "core/rps_util.hpp"
@@ -53,12 +53,12 @@ namespace rps
         SubresourceRangePacked  fullSubresourceRange;
         uint32_t                numSubResources = 0;
         uint32_t                clearValueId    = RPS_INDEX_NONE_U32;
-        RpsAccessAttr           allAccesses     = {};
-        RpsAccessAttr           prevAllAccesses = {};
-        RpsAccessAttr           initialAccess   = {};
-        Span<FinalAccessInfo>   finalAccesses;
-        uint32_t                lifetimeBegin = UINT32_MAX;
-        uint32_t                lifetimeEnd   = UINT32_MAX;
+        AccessAttr              allAccesses     = {};
+        AccessAttr              initialAccess   = {};
+        AccessAttr              prevFinalAccess = {};
+        Span<FinalAccessInfo>   finalAccesses   = {};
+        uint32_t                lifetimeBegin   = UINT32_MAX;
+        uint32_t                lifetimeEnd     = UINT32_MAX;
         bool                    isTemporalSlice : 1;
         bool                    isFirstTemporalSlice : 1;
         bool                    isExternal : 1;
@@ -71,6 +71,8 @@ namespace rps
         RpsGpuMemoryRequirement allocRequirement = {0, 0, RPS_INDEX_NONE_U32};
         RpsHeapPlacement        allocPlacement   = {RPS_INDEX_NONE_U32, 0};
         RpsRuntimeResource      hRuntimeResource = {};
+
+        static constexpr uint32_t LIFETIME_UNDEFINED = UINT32_MAX;
 
         ResourceInstance()
             : isTemporalSlice(false)
@@ -85,6 +87,11 @@ namespace rps
         {
         }
 
+        bool IsActive() const
+        {
+            return resourceDeclId != RPS_INDEX_NONE_U32;
+        }
+
         bool IsTemporalParent() const
         {
             return temporalLayerOffset != RPS_INDEX_NONE_U32;
@@ -95,6 +102,31 @@ namespace rps
             return (allAccesses.accessFlags == RPS_ACCESS_UNKNOWN);
         }
 
+        bool HasEmptyLifetime() const
+        {
+            return lifetimeBegin > lifetimeEnd;
+        }
+
+        bool IsPersistent() const
+        {
+            return isExternal || rpsAnyBitsSet(desc.flags, RPS_RESOURCE_FLAG_PERSISTENT_BIT);
+        }
+
+        void SetInitialAccess(AccessAttr newInitialAccess)
+        {
+            initialAccess = newInitialAccess;
+        }
+
+        void FinalizeRuntimeResourceCreation(const AccessAttr* pOverridePrevAccess = nullptr)
+        {
+            RPS_ASSERT(hRuntimeResource);
+            RPS_ASSERT(isPendingCreate);
+
+            prevFinalAccess = pOverridePrevAccess ? *pOverridePrevAccess : initialAccess;
+            isPendingCreate = false;
+        }
+
+        void InvalidateRuntimeResource(RuntimeBackend* pBackend);
     };
 
     struct CmdAccessInfo
@@ -397,12 +429,19 @@ namespace rps
                                        RpsRuntimeDebugMarkerMode        mode,
                                        StrRef                           name) const;
 
+        virtual bool ShouldResetAliasedResourcesPrevFinalAccess() const
+        {
+            return true;
+        }
+
         RpsResult RecordCommand(RuntimeCmdCallbackContext& context, const RuntimeCmd& runtimeCmd) const;
 
     private:
         RpsResult RecordCmdBegin(const RuntimeCmdCallbackContext& context) const;
         RpsResult RecordCmdEnd(const RuntimeCmdCallbackContext& context) const;
 
+        RpsResult UpdateResourceFinalAccessStates(RenderGraphUpdateContext&  context,
+                                                  ArrayRef<ResourceInstance> resourceInstances);
     protected:
         virtual void OnDestroy() override;
 
@@ -417,6 +456,30 @@ namespace rps
     private:
         RenderGraph& m_renderGraph;
     };
+
+    inline void ResourceInstance::InvalidateRuntimeResource(RuntimeBackend* pBackend)
+    {
+        RPS_ASSERT(!(isPendingCreate && hRuntimeResource && (allocPlacement.heapId != RPS_INDEX_NONE_U32)));
+
+        if (!isExternal)
+        {
+            if (hRuntimeResource)
+            {
+                pBackend->DestroyRuntimeResourceDeferred(*this);
+                RPS_ASSERT(!hRuntimeResource &&
+                           "Bad DestroyRuntimeResourceDeferred implementation - expect hRuntimeResource to be cleared");
+            }
+
+            if (!isPendingCreate)
+            {
+                allocPlacement = {RPS_INDEX_NONE_U32, 0};
+                // Temporal parent don't have a runtime resource.
+                // Otherwise, mark it as pending creating runtime resource.
+                isPendingCreate = !IsTemporalParent();
+                prevFinalAccess = AccessAttr{};
+            }
+        }
+    }
 
     class NullRuntimeBackend : public RuntimeBackend
     {
@@ -764,6 +827,14 @@ namespace rps
 
         RpsResult AddPhase(IRenderGraphPhase* pPhase)
         {
+            if (m_phases.capacity() == m_phases.size())
+            {
+                RPS_DIAG_LOG(RPS_DIAG_WARNING,
+                             "RenderGraph::AddPhase:",
+                             "Capacity reservation (%zu) needs to be increased.",
+                             m_phases.capacity());
+            }
+
             RPS_RETURN_ERROR_IF(!m_phases.push_back(pPhase), RPS_ERROR_OUT_OF_MEMORY);
 
             if (m_pBackend == nullptr)
@@ -783,6 +854,14 @@ namespace rps
         T* FrameAlloc()
         {
             return static_cast<T*>(m_frameArena.AlignedAlloc(sizeof(T), alignof(T)));
+        }
+
+        static AccessAttr CalcPreviousAccess(uint32_t                      prevTransitionId,
+                                             ConstArrayRef<TransitionInfo> transitions,
+                                             const ResourceInstance&       resInstance)
+        {
+            return (prevTransitionId != RenderGraph::INVALID_TRANSITION) ? transitions[prevTransitionId].access.access
+                                                                         : resInstance.prevFinalAccess;
         }
 
     public:
@@ -884,4 +963,4 @@ namespace rps
 
 RPS_IMPL_OPAQUE_HANDLE(NullRuntimeHeap, RpsRuntimeHeap, void);
 
-#endif  //RPS_RENDER_GRAPH_H
+#endif  //RPS_RENDER_GRAPH_HPP

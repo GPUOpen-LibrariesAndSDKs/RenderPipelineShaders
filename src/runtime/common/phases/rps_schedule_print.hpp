@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_SCHEDULE_PRINT_HPP_
-#define _RPS_SCHEDULE_PRINT_HPP_
+#ifndef RPS_SCHEDULE_PRINT_HPP
+#define RPS_SCHEDULE_PRINT_HPP
 
 #include "rps/runtime/common/rps_runtime.h"
 
@@ -28,8 +28,41 @@ namespace rps
             auto runtimeCmds = renderGraph.GetRuntimeCmdInfos().crange_all();
             auto cmdBatches  = renderGraph.GetCmdBatches().crange_all();
             auto cmds        = renderGraph.GetCmdInfos().crange_all();
+            auto resInfos    = renderGraph.GetResourceInstances().crange_all();
+            auto resDecls    = renderGraph.GetBuilder().GetResourceDecls();
 
             PrinterRef printer(context.renderGraph.GetDevice().Printer());
+
+            printer("\nScheduled resources:");
+
+            for (uint32_t iRes = 0; iRes < resInfos.size(); iRes++)
+            {
+                const auto& resInfo = resInfos[iRes];
+
+                printer("\n  %u : [%u]", iRes, resInfo.resourceDeclId);
+
+                if (resInfo.resourceDeclId < resDecls.size())
+                {
+                    printer(" '");
+                    resDecls[resInfo.resourceDeclId].name.Print(printer);
+                    printer("'");
+
+                    if (resInfo.isAliased)
+                    {
+                        printer(", aliased");
+                    }
+
+                    printer("\n    accesses : ");
+                    resInfo.allAccesses.Print(printer);
+
+                    printer("\n    lifetime : [%u - %u]", resInfo.lifetimeBegin, resInfo.lifetimeEnd);
+                }
+                else
+                {
+                    RPS_ASSERT(!resInfo.IsActive());
+                    printer(" (inactive)");
+                }
+            }
 
             printer("\nSchedule:");
 
@@ -100,14 +133,21 @@ namespace rps
             CmdDebugPrintPhase::PrintResourceReference(context, printer, transInfo.access.resourceId, transInfo.access.range);
             printer("> : ");
 
-            const auto& prevTrans = renderGraph.GetTransitionInfo(transInfo.prevTransition);
+            const auto prevTrans =
+                RenderGraph::CalcPreviousAccess(transInfo.prevTransition,
+                                                renderGraph.GetTransitions().crange_all(),
+                                                renderGraph.GetResourceInstance(transInfo.access.resourceId));
 
             printer("(");
-            AccessAttr(prevTrans.access.access).Print(printer);
+            if (transInfo.prevTransition == RenderGraph::INVALID_TRANSITION)
+            {
+                printer("*"); // Denotes previous final access.
+            }
+            prevTrans.Print(printer);
             printer(")");
 
             printer(" => (");
-            AccessAttr(transInfo.access.access).Print(printer);
+            transInfo.access.access.Print(printer);
             printer(")");
         }
 
@@ -129,4 +169,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //_RPS_SCHEDULE_PRINT_HPP_
+#endif  //RPS_SCHEDULE_PRINT_HPP

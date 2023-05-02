@@ -1,0 +1,44 @@
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.txt for full license details.
+
+graphics node Triangle(rtv renderTarget : SV_Target0, uint triangleId);
+
+node CopySrcDummy([readonly(copy)] texture temporal);
+
+export void main([readonly(present)] texture backbuffer, uint frameIndex)
+{
+    ResourceDesc backbufferDesc = backbuffer.desc();
+
+    uint32_t   width  = (uint32_t)backbufferDesc.Width;
+    uint32_t   height = backbufferDesc.Height;
+    RPS_FORMAT format = backbufferDesc.Format;
+
+    uint tempLayers = 3;
+
+    texture history = create_tex2d(format, width, height, 1, 1, tempLayers);
+    
+    if (frameIndex < tempLayers){
+        // clear and then render geometry to back buffer
+        clear(backbuffer, float4(0.0, 0.2, 0.4, 1.0));
+        clear(history, float4(0.0, 0.2, 0.4, 1.0));
+
+        Triangle(backbuffer, 0);
+        Triangle(history, 0);
+
+        // Add an empty node call with a dummy access, so this slice can be accessed as a copy source
+        // already. Note: This is a temporary solution and will be changed in the future.
+        CopySrcDummy(history);
+    }
+    else
+    {
+        // Copy from previous to current slice.
+        copy_texture(history.temporal(0), history.temporal(1));
+
+        // Copy to backbuffer from 2 frames ago.
+        copy_texture(backbuffer, history.temporal(2));
+    }
+}

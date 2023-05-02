@@ -1,14 +1,17 @@
-# Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is part of the AMD Render Pipeline Shaders SDK which is
 # released under the AMD INTERNAL EVALUATION LICENSE.
 #
-# See file LICENSE.RTF for full license details.
+# See file LICENSE.txt for full license details.
 
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE} )
 
-file( GLOB_RECURSE GuiTestSrcs
-    "${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp" )
+file( GLOB_RECURSE GuiTestSrcs "${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp" )
+
+if ( NOT RpsEnableVulkanTests )
+    list( FILTER GuiTestSrcs EXCLUDE REGEX ".*_vk.cpp" )
+endif()
 
 message( STATUS "Found Tests: ${GuiTestSrcs}" )
 
@@ -24,10 +27,12 @@ if ( WIN32 )
                 else()
                     set( Dependencies "${Dependencies};ImGuiDX12Backend" )
                 endif()
-                SetupTestApp( ${TestSrc} "${AppFolder}/gui" "${IncludeDirectories}" "${Dependencies}" True )
+                SetupTestApp( ${TestSrc} "${AppFolder}/gui" "${IncludeDirectories}" "${Dependencies}" False False)
             endif()
+        elseif(TestSrc MATCHES "${CMAKE_CURRENT_SOURCE_DIR}/test_triangle_vk")
+            SetupTestApp( ${TestSrc} "${AppFolder}/gui" "" "" True True )
         else()
-            SetupTestApp( ${TestSrc} "${AppFolder}/gui" "" "" True )
+            SetupTestApp( ${TestSrc} "${AppFolder}/gui" "" "" False False)
         endif()
     endforeach()
 endif()

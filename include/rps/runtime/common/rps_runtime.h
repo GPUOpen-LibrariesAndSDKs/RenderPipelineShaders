@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_RUNTIME_H
 #define RPS_RUNTIME_H
@@ -100,7 +100,7 @@ typedef enum RpsScheduleFlagBits
     RPS_SCHEDULE_KEEP_PROGRAM_ORDER_BIT = (1 << 0),
 
     /// Schedules in favor of reducing total GPU memory usage. Possible strategies include minimizing transient resource
-    /// lifetimes and agressive aliasing. This may increase the number of barriers generated.
+    /// lifetimes and aggressive aliasing. This may increase the number of barriers generated.
     RPS_SCHEDULE_PREFER_MEMORY_SAVING_BIT = (1 << 1),
 
     /// Schedules commands randomly (without changing program logic). Mostly useful for testing purposes. Applications
@@ -124,10 +124,10 @@ typedef enum RpsScheduleFlagBits
     /// RPS_SCHEDULE_WORKLOAD_TYPE_PIPELINING_DISABLE_BIT is set, this flag will have not effect.
     RPS_SCHEDULE_WORKLOAD_TYPE_PIPELINING_AGGRESSIVE_BIT = (1 << 6),
 
-    /// Includes split barriers where appropriate.
-    RPS_SCHEDULE_ALLOW_SPLIT_BARRIERS_BIT = (1 << 16),
-
     // Reserved for future use:
+
+    /// Reserved for future use. Includes split barriers where appropriate.
+    RPS_SCHEDULE_ALLOW_SPLIT_BARRIERS_BIT = (1 << 16),
 
     /// Reserved for future use. Avoids rescheduling if possible and uses the existing schedule instead.
     RPS_SCHEDULE_AVOID_RESCHEDULE_BIT = (1 << 17),
@@ -150,7 +150,7 @@ typedef enum RpsScheduleFlagBits
     /// for scheduling to which these flags can add additional ones.
     RPS_SCHEDULE_DEFAULT = (1 << 30),
 
-    /// Pioritizes application performance over a lower memory footprint.
+    /// Prioritizes application performance over a lower memory footprint.
     RPS_SCHEDULE_DEFAULT_PERFORMANCE = RPS_SCHEDULE_DEFAULT,
 
     /// Prioritizes a lower memory footprint over performance.
@@ -187,6 +187,8 @@ typedef enum RpsRenderGraphFlagBits
     RPS_RENDER_GRAPH_FLAG_NONE                  = 0,       ///< No special properties.
     RPS_RENDER_GRAPH_DISALLOW_UNBOUND_NODES_BIT = 1 << 0,  ///< Disallows unbound nodes if no default callback is set.
     RPS_RENDER_GRAPH_NO_GPU_MEMORY_ALIASING     = 1 << 1,  ///< Disables GPU memory aliasing.
+    RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS       = 1 << 2,  ///< Disables lifetime analysis unless required by other
+                                                           ///  core features, e.g. memory aliasing.
 } RpsRenderGraphFlagBits;
 
 /// @brief Bitmask type for <c><i>RpsRenderGraphFlagBits</i></c>.
@@ -227,27 +229,27 @@ typedef uint32_t RpsParameterFlags;
 
 /// @brief Bitflags for command callback properties.
 ///
-/// Different calls of the same node may use different sets of properties.
+/// These flags control the graphics state setup and teardown behavior that occurs before entering and after
+/// exiting the callback.
 typedef enum RpsCmdCallbackFlagBits
 {
     /// No callback properties.
     RPS_CMD_CALLBACK_FLAG_NONE = 0,
 
-    /// The command callback will record  command buffer in a multi-threaded way. This may change the render pass setup
-    /// behavior as required by some graphics APIs.
-    RPS_CMD_CALLBACK_MULTI_THREADED_BIT = 1 << 0,
-
     /// Skips default render target / depth stencil buffer setup, even if any were specified in the node parameter
     /// semantics.
-    RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT = 1 << 1,
+    RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT = 1 << 0,
 
-    /// Skips viewport and scissor rect setup during command node setup. Used when the command callback will do the
-    /// setup instead.
-    RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_BIT = 1 << 2,
+    /// Skips viewport and scissor rect setup. Used when the command callback will do the setup instead.
+    RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_SCISSOR_BIT = 1 << 1,
 
     /// Skips render state & resource binding setup other than render targets (including depth stencil buffer) and
     /// viewport (including scissor rects).
-    RPS_CMD_CALLBACK_CUSTOM_STATE_SETUP_BIT = 1 << 3,
+    RPS_CMD_CALLBACK_CUSTOM_STATE_SETUP_BIT = 1 << 2,
+
+    /// Skips all setup.
+    RPS_CMD_CALLBACK_CUSTOM_ALL = RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT |
+                                  RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_SCISSOR_BIT | RPS_CMD_CALLBACK_CUSTOM_STATE_SETUP_BIT
 } RpsCmdCallbackFlagBits;
 
 /// @brief Bitmask type for <c><i>RpsCmdCallbackFlagBits</i></c>.
@@ -377,7 +379,8 @@ typedef struct RpsRenderGraphUpdateInfo
     /// Pointer to a function for starting the render graph building process.
     PFN_rpsRenderGraphBuild pfnBuildCallback;
 
-    /// Pointer to a random number generator.
+    /// Pointer to a random number generator. Only required if any randomized behavior is used, e.g.
+    /// RPS_SCHEDULE_RANDOM_ORDER_BIT.
     const RpsRandomNumberGenerator* pRandomNumberGenerator;
 } RpsRenderGraphUpdateInfo;
 
@@ -590,7 +593,7 @@ typedef struct RpsRenderGraphCreateInfo
     struct
     {
         RpsScheduleFlags scheduleFlags;    ///< Flags for scheduling behavior.
-        uint32_t         numQueues;        ///< Number of queues avaiblable to the render graph. If 0, RPS assumes there
+        uint32_t         numQueues;        ///< Number of queues available to the render graph. If 0, RPS assumes there
                                            ///  is 1 graphics queue.
         const RpsQueueFlags* pQueueInfos;  ///< Pointer to an array of <c><i>RpsQueueFlags</i></c> with numQueues queue
                                            ///  flags. Must not be NULL if numQueues != 0.
@@ -698,13 +701,13 @@ RpsResourceId rpsRenderGraphGetParamResourceId(RpsRenderGraphBuilder hRenderGrap
 /// @param hRenderGraphBuilder      Handle to the render graph builder. Must not be RPS_NULL_HANDLE.
 /// @param name                     Null terminated string with the name of the resource.
 /// @param localId                  Subprogram local ID of the resource.
-/// @param arg                      Variable for the ID of the resource
+/// @param hDesc                    Handle to the description of the resource.
 ///
 /// @returns                        ID of the declared resource.
 RpsResourceId rpsRenderGraphDeclareResource(RpsRenderGraphBuilder hRenderGraphBuilder,
                                             const char*           name,
                                             RpsResourceId         localId,
-                                            RpsVariable           arg);
+                                            RpsVariable           hDesc);
 
 // Nodes
 
@@ -716,6 +719,7 @@ RpsResourceId rpsRenderGraphDeclareResource(RpsRenderGraphBuilder hRenderGraphBu
 ///                                         <c><i>RpsCmdCallbackContext</i></c>.
 /// @param callback                         Pointer to the callback function.
 /// @param pCallbackUserContext             Pointer to a user controlled structure to be passed to the callback.
+/// @param callbackFlags                    Flags controlling the callback behavior.
 /// @param pArgs                            Pointer to the parameters used for the callback.
 ///                                         Must not be NULL if numArgs != 0.
 /// @param numArgs                          Number of parameters used for the callback.
@@ -726,6 +730,7 @@ RpsNodeId rpsRenderGraphAddNode(RpsRenderGraphBuilder hRenderGraphBuilder,
                                 uint32_t              userTag,
                                 PFN_rpsCmdCallback    callback,
                                 void*                 pCallbackUserContext,
+                                RpsCmdCallbackFlags   callbackFlags,
                                 const RpsVariable*    pArgs,
                                 uint32_t              numArgs);
 
@@ -747,6 +752,10 @@ RpsResult rpsRenderGraphGetResourceInfo(RpsRenderGraph          hRenderGraph,
                                         RpsRuntimeResourceInfo* pResourceInfo);
 
 /// @brief Gets the runtime resource info of an output parameter.
+///
+/// When updating a render graph, any resource handle returned through pResourceInfos will have updated if there was
+/// an update to the corresponding output resource description. Make sure to call this function after updating a render
+/// graph to get any updated handles.
 ///
 /// @param hRenderGraph                         Handle to the render graph to get the resource info from.
 /// @param paramId                              Index of the resource parameter. Must be an output resource parameter
@@ -888,8 +897,10 @@ typedef struct RpsResourceDiagnosticInfo
     RpsClearValue           clearValue;        ///< Clear value of the resource.
     RpsAccessAttr           allAccesses;       ///< Combination of all accesses of the resource throughout the frame.
     RpsAccessAttr           initialAccess;     ///< Initial access of the resource.
-    uint32_t                lifetimeBegin;     ///< Index of the first command to access the resource.
-    uint32_t                lifetimeEnd;       ///< Index of the last command to access the resource.
+    uint32_t                lifetimeBegin;     ///< Index of the first command to which the runtime resource is active
+                                               ///  in its backing heap.
+    uint32_t lifetimeEnd;                      ///< Index of the last command to which the runtime resource is active
+                                               ///  in its backing heap.
     RpsGpuMemoryRequirement allocRequirement;  ///< Allocation requirements for the memory of the resource.
     RpsHeapPlacement        allocPlacement;    ///< Allocation placement for the memory of the resource.
     RpsRuntimeResource      hRuntimeResource;  ///< Handle to the backend specific resource.
@@ -920,7 +931,7 @@ typedef struct RpsRenderGraphDiagnosticInfo
     /// Pointer to an array of <c><i>RpsCmdDiagnosticInfo</i></c> with numCommandInfos command infos.
     const RpsCmdDiagnosticInfo* pCmdDiagInfos;
 
-    /// Pointer to an array of <c><i>RpsHeapDiagnosticInfo</i></c> with numHeapInfosheap infos.
+    /// Pointer to an array of <c><i>RpsHeapDiagnosticInfo</i></c> with numHeapInfos heap infos.
     const RpsHeapDiagnosticInfo* pHeapDiagInfos;
 } RpsRenderGraphDiagnosticInfo;
 
@@ -1042,14 +1053,14 @@ RpsResult rpsCmdCloneContext(const RpsCmdCallbackContext*  pContext,
 /// support a render pass objects. Usually used for multi-threaded rendering from within a command callback.
 ///
 /// @param pContext                             Pointer to the current command callback context. Must not be NULL.
-/// @param flags                                Flags for the render pass behavior.
+/// @param pBeginInfo                           Pointer to render pass parameters. Must not be NULL.
 ///
 /// @returns                                    Result code of the operation. See <c><i>RpsResult</i></c> for more info.
-RpsResult rpsCmdBeginRenderPass(const RpsCmdCallbackContext* pContext, RpsRuntimeRenderPassFlags flags);
+RpsResult rpsCmdBeginRenderPass(const RpsCmdCallbackContext* pContext, const RpsCmdRenderPassBeginInfo* pBeginInfo);
 
 /// @brief Ends a rasterization rendering pass.
 ///
-/// Must be paird with rpsCmdBeginRenderPass. Usually used for multi-threaded rendering from within a command callback.
+/// Must be paired with rpsCmdBeginRenderPass. Usually used for multi-threaded rendering from within a command callback.
 ///
 /// @param pContext                             Pointer to the current command callback context. Must not be NULL.
 ///
@@ -1058,7 +1069,7 @@ RpsResult rpsCmdEndRenderPass(const RpsCmdCallbackContext* pContext);
 
 /// @brief Sets a new command buffer to be used for command recording.
 ///
-/// RPS does not keep of previously used command buffers. It is the responsibility of the application to track and
+/// RPS does not track previously used command buffers. It is the responsibility of the application to track and
 /// submit them in order accordingly. Usually used for multi-threaded rendering.
 ///
 /// @param pContext                             Pointer to the current command callback context. Must not be NULL.
@@ -1123,7 +1134,7 @@ RpsResult rpsCmdGetArgResourceDesc(const RpsCmdCallbackContext* pContext,
 ///                                     argument if numResources > 1.
 /// @param srcArrayOffset               Offset to the first runtime resource to get.
 /// @param pRuntimeResources            Pointer to an array of <c><i>RpsRuntimeResource</i></c> in which the
-///                                     numResources resource descriptions are returned.
+///                                     numResources runtime resources are returned.
 ///                                     Must not be NULL if numResources != 0.
 /// @param numResources                 Number of runtime resources to get. Requires srcArrayOffset + numResources to
 ///                                     be less than the number of elements in the node argument.
@@ -1337,7 +1348,7 @@ static inline RpsNodeDeclId rpsRenderGraphDeclareDynamicNode(RpsRenderGraphBuild
 /// @param name                     Null terminated string with the name of the node declaration. Passing NULL
 ///                                 registers the node as a fallback for calling unknown nodes.
 /// @param flags                    Flags of the node declaration.
-/// @param paramDescs               Initializizer list of parameter descriptions for the node parameters.
+/// @param paramDescs               Initializer list of parameter descriptions for the node parameters.
 ///
 /// @returns                        ID of the node declaration if successful, RPS_NODEDECL_ID_INVALID otherwise.
 static inline RpsNodeDeclId rpsRenderGraphDeclareDynamicNode(RpsRenderGraphBuilder hRenderGraphBuilder,
@@ -1359,7 +1370,8 @@ static inline RpsNodeDeclId rpsRenderGraphDeclareDynamicNode(RpsRenderGraphBuild
 ///                                         registered for the empty string name instead.
 /// @param pCallbackUserContext             Pointer to a user controlled structure to be passed to the callback. May be
 ///                                         NULL.
-/// @param args                             Initializizer list of RPS variables for the node parameters.
+/// @param callbackFlags                    Flags controlling the callback behavior.
+/// @param args                             Initializer list of RPS variables for the node parameters.
 ///
 /// @returns                                ID of the command node.
 static inline RpsNodeId rpsRenderGraphAddNode(RpsRenderGraphBuilder              hRenderGraphBuilder,
@@ -1367,10 +1379,17 @@ static inline RpsNodeId rpsRenderGraphAddNode(RpsRenderGraphBuilder             
                                               uint32_t                           userTag,
                                               PFN_rpsCmdCallback                 callback,
                                               void*                              pCallbackUserContext,
+                                              RpsCmdCallbackFlags                callbackFlags,
                                               std::initializer_list<RpsVariable> args)
 {
-    return rpsRenderGraphAddNode(
-        hRenderGraphBuilder, nodeDeclId, userTag, callback, pCallbackUserContext, args.begin(), uint32_t(args.size()));
+    return rpsRenderGraphAddNode(hRenderGraphBuilder,
+                                 nodeDeclId,
+                                 userTag,
+                                 callback,
+                                 pCallbackUserContext,
+                                 callbackFlags,
+                                 args.begin(),
+                                 uint32_t(args.size()));
 }
 
 /// @brief Allocates memory for an object from a render graph.
@@ -1572,9 +1591,11 @@ namespace rps
 /// This can be used to bind a C++ member function as the command callback.
 ///
 /// @param hProgram                 Handle to the subprogram to bind the node. Must not be RPS_NULL_HANDLE.
-/// @param name                     Null terminated string with the name of the node to bind to.
+/// @param name                     Null terminated string with the name of the node to bind to. Passing NULL uses the
+///                                 callback as default fallback. See RpsProgramCreateInfo::defaultNodeCallback for
+///                                 details.
 /// @param cmdCallback              Pointer to a function to be bound to the node as the command recording callback.
-/// @param pCallbackContext         User defined context to be passed back to the user as parameter of the callback.
+/// @param pThis                    Pointer to class instance containing member function callback.
 /// @param flags                    Flags for the callback behavior.
 ///
 /// @returns                        Result code of the operation. See <c><i>RpsResult</i></c> for more info.
@@ -1586,7 +1607,7 @@ template <typename TTarget,
 RpsResult rpsProgramBindNode(RpsSubprogram       hProgram,
                              const char*         name,
                              TFunc               cmdCallback,
-                             TTarget*            pCallbackContext,
+                             TTarget*            pThis,
                              RpsCmdCallbackFlags flags = RPS_CMD_CALLBACK_FLAG_NONE)
 {
     RpsCmdCallback* pSlot  = {};
@@ -1594,7 +1615,7 @@ RpsResult rpsProgramBindNode(RpsSubprogram       hProgram,
 
     if (RPS_SUCCEEDED(result))
     {
-        new (pSlot->pUserContext) TContext(pCallbackContext, cmdCallback);
+        new (pSlot->pUserContext) TContext(pThis, cmdCallback);
         pSlot->pfnCallback = TContext::Callback;
         pSlot->flags       = flags;
     }
@@ -1605,7 +1626,9 @@ RpsResult rpsProgramBindNode(RpsSubprogram       hProgram,
 /// @brief Binds a command callback implementation to a node type in an rps program.
 ///
 /// @param hProgram                 Handle to the subprogram to bind the node. Must not be RPS_NULL_HANDLE.
-/// @param name                     Null terminated string with the name of the node to bind to.
+/// @param name                     Null terminated string with the name of the node to bind to. Passing NULL uses the
+///                                 callback as default fallback. See RpsProgramCreateInfo::defaultNodeCallback for
+///                                 details.
 /// @param cmdCallback              Pointer to a function to be bound to the node as the command recording callback.
 /// @param flags                    Flags for the callback behavior.
 ///
@@ -1635,7 +1658,8 @@ RpsResult rpsProgramBindNode(RpsSubprogram       hProgram,
 /// @brief Binds a command callback implementation to a node type in an rps program.
 ///
 /// @param hProgram                 Handle to the subprogram to bind the node. Must not be RPS_NULL_HANDLE.
-/// @param name                     Null terminated string with the name of the node to bind to.
+/// @param name                     Null terminated string with the name of the node to bind to. Passing NULL uses the
+///                                 callback as a fallback for nodes without a definition.
 /// @param pfnCmdCallback           Function pointer of type PFN_rpsCmdCallback to be bound to the node as the command
 ///                                 recording callback.
 /// @param pCallbackContext         User defined context to be passed back when the callback is called.

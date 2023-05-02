@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_SUBPROGRAM_HPP
 #define RPS_SUBPROGRAM_HPP
@@ -128,6 +128,8 @@ namespace rps
         RpsResult Bind(const StrRef name, Subprogram* pRpslEntry)
         {
             const uint32_t nodeDeclId = m_pSignature->FindNodeDeclIndexByName(name);
+            RPS_RETURN_ERROR_IF(nodeDeclId == RPS_INDEX_NONE_U32, RPS_ERROR_UNKNOWN_NODE);
+
             return Bind(nodeDeclId, pRpslEntry);
         }
 
@@ -174,6 +176,8 @@ namespace rps
             }
 
             uint32_t nodeDeclId = m_pSignature->FindNodeDeclIndexByName(name);
+            RPS_RETURN_ERROR_IF(nodeDeclId == RPS_INDEX_NONE_U32, RPS_ERROR_UNKNOWN_NODE);
+
             return BindDeferred(nodeDeclId, contextSize, ppCallback);
         }
 

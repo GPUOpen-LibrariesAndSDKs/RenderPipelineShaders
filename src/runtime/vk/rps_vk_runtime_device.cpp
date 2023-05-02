@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "runtime/vk/rps_vk_runtime_device.hpp"
 #include "runtime/vk/rps_vk_runtime_backend.hpp"
@@ -11,13 +11,15 @@
 
 #include "runtime/common/rps_runtime_util.hpp"
 #include "runtime/common/phases/rps_pre_process.hpp"
-#include "runtime/common/phases/rps_dag_build.h"
+#include "runtime/common/phases/rps_dag_build.hpp"
 #include "runtime/common/phases/rps_access_dag_build.hpp"
 #include "runtime/common/phases/rps_cmd_print.hpp"
 #include "runtime/common/phases/rps_cmd_dag_print.hpp"
 #include "runtime/common/phases/rps_dag_schedule.hpp"
 #include "runtime/common/phases/rps_schedule_print.hpp"
+#include "runtime/common/phases/rps_lifetime_analysis.hpp"
 #include "runtime/common/phases/rps_memory_schedule.hpp"
+
 
 namespace rps
 {
@@ -26,13 +28,17 @@ namespace rps
         , m_device(pCreateInfo->hVkDevice)
         , m_physicalDevice(pCreateInfo->hVkPhysicalDevice)
         , m_flags(pCreateInfo->flags)
+#ifdef RPS_VK_DYNAMIC_LOADING
+        , m_vkFunctions(*pCreateInfo->pVkFunctions)
+#endif
     {
     }
 
     RpsResult VKRuntimeDevice::Init()
     {
-        vkGetPhysicalDeviceProperties(m_physicalDevice, &m_deviceProperties);
-        vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_deviceMemoryProperties);
+        RPS_USE_VK_FUNCTIONS(m_vkFunctions);
+        RPS_VK_API_CALL(vkGetPhysicalDeviceProperties(m_physicalDevice, &m_deviceProperties));
+        RPS_VK_API_CALL(vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &m_deviceMemoryProperties));
 
         static_assert(VK_MAX_MEMORY_TYPES <= 32, "Bitwidth of m_hostVisibleMemoryTypeMask needs extending.");
 
@@ -51,13 +57,17 @@ namespace rps
 
     RpsResult VKRuntimeDevice::BuildDefaultRenderGraphPhases(RenderGraph& renderGraph)
     {
-        RPS_V_RETURN(renderGraph.ReservePhases(8));
+        RPS_V_RETURN(renderGraph.ReservePhases(16));
         RPS_V_RETURN(renderGraph.AddPhase<PreProcessPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<CmdDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<DAGBuilderPass>());
         RPS_V_RETURN(renderGraph.AddPhase<AccessDAGBuilderPass>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGPrintPhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGSchedulePass>(renderGraph));
+        if (!rpsAnyBitsSet(renderGraph.GetCreateInfo().renderGraphFlags, RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS))
+        {
+            RPS_V_RETURN(renderGraph.AddPhase<LifetimeAnalysisPhase>());
+        }
         RPS_V_RETURN(renderGraph.AddPhase<MemorySchedulePhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<ScheduleDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<VKRuntimeBackend>(*this, renderGraph));
@@ -152,17 +162,19 @@ namespace rps
                 continue;
             }
 
-            VKResourceAllocInfo allocInfo;
+            // NOTE: hRuntimeResource can be non-null and isPendingCreate=true if pendingCreate persists for many frames.
+
+            VKResourceAllocInfo allocInfo = {};
             RPS_V_RETURN(GetResourceAllocInfo(resInst, allocInfo));
             RPS_RETURN_ERROR_IF(allocInfo.memoryRequirements.alignment > UINT32_MAX, RPS_ERROR_INTEGER_OVERFLOW);
 
-            resInst.allocRequirement.size            = uint64_t(allocInfo.memoryRequirements.size);
-            resInst.allocRequirement.alignment       = uint32_t(allocInfo.memoryRequirements.alignment);
-            resInst.allocRequirement.memoryTypeIndex = FinalizeMemoryType(
-                m_deviceMemoryProperties, m_hostVisibleMemoryTypeMask, allocInfo.memoryRequirements, resInst);
-
             if (!resInst.hRuntimeResource)
             {
+                resInst.allocRequirement.size            = uint64_t(allocInfo.memoryRequirements.size);
+                resInst.allocRequirement.alignment       = uint32_t(allocInfo.memoryRequirements.alignment);
+                resInst.allocRequirement.memoryTypeIndex = FinalizeMemoryType(
+                    m_deviceMemoryProperties, m_hostVisibleMemoryTypeMask, allocInfo.memoryRequirements, resInst);
+
                 resInst.hRuntimeResource = allocInfo.hRuntimeResource;
             }
             else
@@ -206,6 +218,11 @@ namespace rps
 
         if (rpsAnyBitsSet(resInfo.allAccesses.accessFlags, (RPS_ACCESS_COPY_SRC_BIT | RPS_ACCESS_RESOLVE_SRC_BIT)))
             usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+#ifdef VK_KHR_fragment_shading_rate
+        if (rpsAnyBitsSet(resInfo.allAccesses.accessFlags, RPS_ACCESS_SHADING_RATE_BIT))
+            usage |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+#endif
 
         return usage;
     }
@@ -302,19 +319,22 @@ namespace rps
     {
         allocInfo = {};
 
+        const bool bUsageBitsNonZero = (resInstance.allAccesses.accessFlags != RPS_ACCESS_UNKNOWN);
+
         // TODO: Check pending state
-        if (!resInstance.hRuntimeResource && (resInstance.allAccesses.accessFlags != RPS_ACCESS_UNKNOWN))
+        if (!resInstance.hRuntimeResource && bUsageBitsNonZero)
         {
+            RPS_USE_VK_FUNCTIONS(m_vkFunctions);
             if (resInstance.desc.IsImage())
             {
                 VkImageCreateInfo imgCI;
                 GetVkImageCreateInfo(imgCI, resInstance);
 
                 VkImage hImage;
-                RPS_V_RETURN(VkResultToRps(vkCreateImage(m_device, &imgCI, nullptr, &hImage)));
+                RPS_V_RETURN(VkResultToRps(RPS_VK_API_CALL(vkCreateImage(m_device, &imgCI, nullptr, &hImage))));
 
                 allocInfo.hRuntimeResource = ToHandle(hImage);
-                vkGetImageMemoryRequirements(m_device, hImage, &allocInfo.memoryRequirements);
+                RPS_VK_API_CALL(vkGetImageMemoryRequirements(m_device, hImage, &allocInfo.memoryRequirements));
             }
             else if (resInstance.desc.IsBuffer())
             {
@@ -322,10 +342,10 @@ namespace rps
                 GetVkBufferCreateInfo(bufCI, resInstance);
 
                 VkBuffer hBuffer;
-                RPS_V_RETURN(VkResultToRps(vkCreateBuffer(m_device, &bufCI, nullptr, &hBuffer)));
+                RPS_V_RETURN(VkResultToRps(RPS_VK_API_CALL(vkCreateBuffer(m_device, &bufCI, nullptr, &hBuffer))));
 
                 allocInfo.hRuntimeResource = ToHandle(hBuffer);
-                vkGetBufferMemoryRequirements(m_device, hBuffer, &allocInfo.memoryRequirements);
+                RPS_VK_API_CALL(vkGetBufferMemoryRequirements(m_device, hBuffer, &allocInfo.memoryRequirements));
             }
         }
 
@@ -407,6 +427,7 @@ namespace rps
 #ifdef VK_NV_EXTERNAL_MEMORY_RDMA_EXTENSION_NAME
             RPS_INIT_NAME_VALUE_PAIR_PREFIXED(VK_MEMORY_PROPERTY_, RDMA_CAPABLE_BIT_NV),
 #endif
+
         };
 
         printer("MEMORY_PROPERTY_").PrintFlags(memoryTypeInfo.propertyFlags, memoryPropertyFlagNames, "_");
@@ -472,6 +493,12 @@ RpsResult rpsVKRuntimeDeviceCreate(const RpsVKRuntimeDeviceCreateInfo* pCreateIn
     RPS_CHECK_ARGS(pCreateInfo->hVkDevice != VK_NULL_HANDLE);
     RPS_CHECK_ARGS(pCreateInfo->hVkPhysicalDevice != VK_NULL_HANDLE);
 
+#ifdef RPS_VK_DYNAMIC_LOADING
+#define RPS_VK_CHECK_FUNCTION_POINTER(callName) RPS_CHECK_ARGS(pCreateInfo->pVkFunctions->callName);
+    RPS_CHECK_ARGS(pCreateInfo->pVkFunctions);
+
+    RPS_VK_FUNCTION_TABLE(RPS_VK_CHECK_FUNCTION_POINTER)
+#endif
     RpsResult result =
         rps::RuntimeDevice::Create<rps::VKRuntimeDevice>(phDevice, pCreateInfo->pDeviceCreateInfo, pCreateInfo);
 

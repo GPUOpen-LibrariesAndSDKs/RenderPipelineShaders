@@ -1,19 +1,20 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/d3d_common/rps_d3d_common.h"
 
 #include "runtime/common/rps_runtime_util.hpp"
 #include "runtime/common/phases/rps_pre_process.hpp"
-#include "runtime/common/phases/rps_dag_build.h"
+#include "runtime/common/phases/rps_dag_build.hpp"
 #include "runtime/common/phases/rps_access_dag_build.hpp"
 #include "runtime/common/phases/rps_cmd_print.hpp"
 #include "runtime/common/phases/rps_cmd_dag_print.hpp"
 #include "runtime/common/phases/rps_dag_schedule.hpp"
+#include "runtime/common/phases/rps_lifetime_analysis.hpp"
 #include "runtime/common/phases/rps_schedule_print.hpp"
 #include "runtime/common/phases/rps_memory_schedule.hpp"
 
@@ -50,6 +51,10 @@ namespace rps
         RPS_V_RETURN(renderGraph.AddPhase<AccessDAGBuilderPass>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGPrintPhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGSchedulePass>(renderGraph));
+        if (!rpsAnyBitsSet(renderGraph.GetCreateInfo().renderGraphFlags, RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS))
+        {
+            RPS_V_RETURN(renderGraph.AddPhase<LifetimeAnalysisPhase>());
+        }
         RPS_V_RETURN(renderGraph.AddPhase<ScheduleDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<D3D11RuntimeBackend>(*this, renderGraph));
 

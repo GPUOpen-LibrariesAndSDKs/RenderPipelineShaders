@@ -1,17 +1,17 @@
-# Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is part of the AMD Render Pipeline Shaders SDK which is
 # released under the AMD INTERNAL EVALUATION LICENSE.
 #
-# See file LICENSE.RTF for full license details.
+# See file LICENSE.txt for full license details.
 
 option( RPSL_DLL "Build RPSL DLLs" ON )
 option( RpsEnableVulkanTests "Enable Vulkan Test" ON )
 
 # Adding a test project
-function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectories DependenciesString UseRpslDll AppFolder )
+function( AddTestApp AppName TestSrcFile CompileFlags CompileDefinitions LinkFlags IncludeDirectories DependenciesString UseRpslDll UseVkDynLoading AppFolder )
     
-    set( GeneratedSources "" )
+    set( GeneratedSource "" )
     get_filename_component( TestSrcFileDir ${TestSrcFile} DIRECTORY )
 
     set( RpslFileName ${TestSrcFileDir}/${AppName}.rpsl )
@@ -21,20 +21,26 @@ function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectori
     if ( NOT EXISTS ${RpslFileName} )
         set( RpslFileName ${TestSrcFileDir}/${SharedName}.rpsl )
     endif()
+    if ( EXISTS ${RpslFileName} AND NOT RpsOsSupportsRpslCompiler )
+        message( WARNING "'${AppName}' target skipped as the RPSL compiler (rps-hlslc) does not support the current platform yet. This is required for compiling '${RpslFileName}'." )
+        return()
+    endif()
     if ( EXISTS ${RpslFileName} )
         if ( UseRpslDll )
             set( RpslcTargetName ${AppName}_dyn )
+        elseif ( UseVkDynLoading)
+            set( RpslcTargetName ${AppName}_dyn_load )
         else()
             set( RpslcTargetName ${AppName} )
         endif()
 
-        CompileRpslDxc( ${RpslcTargetName} ${RpslFileName} "${GeneratedSources}" "Generated")
-        source_group( TREE "${CMAKE_CURRENT_BINARY_DIR}/${RpslcTargetName}/Generated/" PREFIX "rps_generated" FILES ${GeneratedSources} )
+        CompileRpslDxc( ${RpslcTargetName} ${RpslFileName} GeneratedSource "Generated")
+        source_group( TREE "${CMAKE_CURRENT_BINARY_DIR}/${RpslcTargetName}.tmp/Generated/" PREFIX "rps_generated" FILES ${GeneratedSource} )
 
         if ( UseRpslDll )
             set( RpslDllTarget ${SharedName}_rpsl_dll )
             if ( NOT TARGET ${RpslDllTarget} )
-                add_library( ${RpslDllTarget} SHARED ${RpslFileName} ${GeneratedSources} ${PROJECT_SOURCE_DIR}/src/runtime/common/rps_rpsl_host_dll.c )
+                add_library( ${RpslDllTarget} SHARED ${RpslFileName} ${GeneratedSource} ${PROJECT_SOURCE_DIR}/src/runtime/common/rps_rpsl_host_dll.c )
                 target_compile_definitions( ${RpslDllTarget} PRIVATE RPS_SHADER_GUEST=1 )
                 set_target_properties( ${RpslDllTarget} PROPERTIES
                     OUTPUT_NAME ${SharedName}_rpsl
@@ -46,7 +52,7 @@ function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectori
     elseif( UseRpslDll )
         return()
     endif()
-    set( SharedHeaderName ${TestSrcFileDir}/${SharedName}_shared.h)
+    set( SharedHeaderName ${TestSrcFileDir}/${SharedName}_shared.hpp)
     if ( EXISTS ${SharedHeaderName} )
         set( TestSrcFile ${TestSrcFile} ${SharedHeaderName} )
     endif()
@@ -59,13 +65,20 @@ function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectori
         add_executable( ${AppName} WIN32 ${TestSrcFile} )
         target_compile_definitions(${AppName} PRIVATE USE_RPSL_DLL=1)
         set( DependenciesString "${DependenciesString};${RpslDllTarget}" )
+    elseif( UseVkDynLoading )
+        set( AppName ${AppName}_dyn_load )
+        add_executable( ${AppName} WIN32 ${TestSrcFile} ${GeneratedSource} )
+        target_compile_definitions(${AppName} PRIVATE RPS_VK_DYNAMIC_LOADING VK_NO_PROTOTYPES)
     else()
-        add_executable( ${AppName} WIN32 ${TestSrcFile} ${GeneratedSources} )
+        add_executable( ${AppName} WIN32 ${TestSrcFile} ${GeneratedSource} )
     endif()
 
-    CopyDXC( ${AppName} )
+    if ( ${AppName} MATCHES "_vk$|_vk_dyn$|_vk_dyn_load$" )
+        CopySpirvDXC( ${AppName} )
+    endif()
 
-    if (${AppName} MATCHES "_d3d12$|_d3d12_dyn$")
+    if ( WIN32 AND ( ${AppName} MATCHES "_d3d12$|_d3d12_dyn$" ) )
+        CopyDXC( ${AppName} )
         CopyDX12AgilitySDKBinaries( ${AppName} )
     endif()
 
@@ -86,6 +99,8 @@ function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectori
         set( LinkFlags /SUBSYSTEM:CONSOLE )
     endif( )
 
+    target_compile_definitions(${AppName} PRIVATE ${CompileDefinitions})
+
     set_target_properties( ${AppName} PROPERTIES
         COMPILE_FLAGS "${CompileFlags}"
         FOLDER "${AppFolder}"
@@ -98,13 +113,13 @@ function( AddTestApp AppName TestSrcFile CompileFlags LinkFlags IncludeDirectori
     file(RELATIVE_PATH TestExecPath ${CMAKE_CURRENT_BINARY_DIR} ${AppAbsoluteExecPath})
     set(TestExecPath "./${TestExecPath}")
 
-    if ( NOT ( ${AppName} MATCHES "_vk$|_vk_dyn$" AND NOT ${RpsEnableVulkanTests}) )
+    if ( NOT ( ${AppName} MATCHES "_vk$|_vk_dyn$|_vk_dyn_load$" AND NOT ${RpsEnableVulkanTests}) )
         add_test( NAME ${AppName} COMMAND ${TestExecPath} --reporter junit --out test_report_${AppName}.xml )
     endif()
 
 endfunction()
 
-function ( SetupTestApp TestSrc AppFolder AdditionalIncludeDirectiories AdditionalDependecies UseRpslDll)
+function ( SetupTestApp TestSrc AppFolder AdditionalIncludeDirectiories AdditionalDependecies UseRpslDll UseVkDynLoading)
     get_filename_component( TargetName ${TestSrc} NAME_WE )
     set(RpsApiRuntime "")
     foreach(ExcludeEntry IN LISTS ExcludeTests)
@@ -119,7 +134,13 @@ function ( SetupTestApp TestSrc AppFolder AdditionalIncludeDirectiories Addition
         set(RpsApiRuntime "rps_runtime_d3d11;")
     elseif (TargetName MATCHES "_vk$")
         if (${Vulkan_FOUND})
-            set(RpsApiRuntime "rps_runtime_vk;${Vulkan_LIBRARY}")
+            if(${UseVkDynLoading})
+                set(RpsApiRuntime "rps_runtime_vkdyn;")
+                set(CompileDefinitions "RPS_VK_DYNAMIC_LOADING;VK_NO_PROTOTYPES")
+            else()
+                set(RpsApiRuntime "rps_runtime_vk;${Vulkan_LIBRARY}")
+            endif()
+            
             set(VulkanIncDir ${Vulkan_INCLUDE_DIRS})
         else()
             set(TargetName "")
@@ -130,15 +151,17 @@ function ( SetupTestApp TestSrc AppFolder AdditionalIncludeDirectiories Addition
         set( CompileFlags "${CompileFlags} /DCONSOLE" )
     endif()
     if (NOT ${TargetName} STREQUAL "")
-
         set( Dependencies "rps_core;rps_frontend;rps_runtime;${RpsApiRuntime};${AdditionalDependecies}")
         set( IncludeDirectories "${AdditionalIncludeDirectiories}")
         if (${Vulkan_FOUND})
             set( IncludeDirectories "${VulkanIncDir};${IncludeDirectories}")
         endif()
-        AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "" "${IncludeDirectories}" "${Dependencies}" False ${AppFolder} )
+        AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "${CompileDefinitions}" "" "${IncludeDirectories}" "${Dependencies}" False False ${AppFolder} )
         if ( ${RPSL_DLL} AND UseRpslDll AND WIN32 )
-            AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "" "${IncludeDirectories}" "${Dependencies}" True ${AppFolder} )
+            AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "${CompileDefinitions}" "" "${IncludeDirectories}" "${Dependencies}" True False ${AppFolder} )
+        endif()
+        if( ${UseVkDynLoading} AND TargetName MATCHES "_vk$" )
+            AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "${CompileDefinitions}" "" "${IncludeDirectories}" "${Dependencies}" False True ${AppFolder} )
         endif()
     endif()
 endfunction( )

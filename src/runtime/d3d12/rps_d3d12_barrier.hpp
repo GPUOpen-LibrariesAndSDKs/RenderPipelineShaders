@@ -1,18 +1,29 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_D3D12_BARRIER_H
-#define RPS_D3D12_BARRIER_H
+#ifndef RPS_D3D12_BARRIER_HPP
+#define RPS_D3D12_BARRIER_HPP
 
 #include "runtime/d3d12/rps_d3d12_runtime_device.hpp"
 #include "runtime/d3d12/rps_d3d12_util.hpp"
 
 namespace rps
 {
+    struct D3D12ResolveInfo
+    {
+        ID3D12Resource* pSrc;
+        ID3D12Resource* pDst;
+        uint32_t        srcSubResource;
+        uint32_t        dstSubResource;
+        DXGI_FORMAT     format;
+
+        static constexpr uint32_t RESOLVE_BATCH_SIZE = 128;
+    };
+
     class D3D12BarrierBuilder
     {
     public:
@@ -35,6 +46,9 @@ namespace rps
                                             Span<RuntimeCmdInfo>            transitionRange) = 0;
 
         virtual void RecordBarrierBatch(ID3D12GraphicsCommandList* pD3DCmdList, uint32_t barrierBatch) = 0;
+
+        virtual void RecordResolveBatch(ID3D12GraphicsCommandList*      pD3DCmdList,
+                                        ConstArrayRef<D3D12ResolveInfo> resolveInfos) = 0;
     };
 
     class D3D12ConventionalBarrierBuilder : public D3D12BarrierBuilder
@@ -77,11 +91,11 @@ namespace rps
             {
                 if (rpsAnyBitsSet(resInfo.allAccesses.accessFlags, RPS_ACCESS_DEPTH_STENCIL))
                 {
-                    resInfo.initialAccess.accessFlags = RPS_ACCESS_DEPTH_STENCIL_WRITE;
+                    resInfo.SetInitialAccess(AccessAttr{RPS_ACCESS_DEPTH_STENCIL_WRITE, RPS_SHADER_STAGE_NONE});
                 }
                 else if (rpsAnyBitsSet(resInfo.allAccesses.accessFlags, RPS_ACCESS_RENDER_TARGET_BIT))
                 {
-                    resInfo.initialAccess.accessFlags = RPS_ACCESS_RENDER_TARGET_BIT;
+                    resInfo.SetInitialAccess(AccessAttr{RPS_ACCESS_RENDER_TARGET_BIT, RPS_SHADER_STAGE_NONE});
                 }
             }
         }
@@ -91,10 +105,6 @@ namespace rps
             m_barriers.reset_keep_capacity(&context.frameArena);
             m_barrierBatches.reset_keep_capacity(&context.frameArena);
             m_discardResources.reset_keep_capacity(&context.frameArena);
-
-            m_deactivatedResMask.reset(&context.scratchArena);
-            m_deactivatedResMask.Resize(uint32_t(context.renderGraph.GetResourceInstances().size()));
-            m_deactivatedResMask.Fill(false);
         }
 
         virtual uint32_t CreateBarrierBatch(const RenderGraphUpdateContext& context,
@@ -128,10 +138,13 @@ namespace rps
 
                         if (NeedPlacedResourceInit(dstResInfo))
                         {
+                            const bool bHasStencil = rpsFormatHasStencil(dstResInfo.desc.GetFormat());
+
                             // TODO: Make sure it's full resource clear.
                             if (!rpsAnyBitsSet(dstResInfo.initialAccess.accessFlags, RPS_ACCESS_CLEAR_BIT) &&
                                 !rpsAllBitsSet(dstResInfo.initialAccess.accessFlags,
-                                               RPS_ACCESS_COPY_DEST_BIT | RPS_ACCESS_DISCARD_OLD_DATA_BIT))
+                                               RPS_ACCESS_COPY_DEST_BIT | RPS_ACCESS_DISCARD_DATA_BEFORE_BIT |
+                                                   (bHasStencil ? RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT : 0)))
                             {
                                 m_discardResources.push_back(D3D12RuntimeDevice::FromHandle(
                                     resourceInstances[aliasing.dstResourceIndex].hRuntimeResource));
@@ -143,22 +156,20 @@ namespace rps
                     {
                         auto& srcResInfo = resourceInstances[aliasing.srcResourceIndex];
 
-                        m_deactivatedResMask.SetBit(aliasing.srcResourceIndex, true);
-
                         // Before deactivating resource, transition it to the initial state.
                         // For placed resource that needs init, we have made sure initialAccess
                         // is compatible with the states required for init.
                         for (auto& finalAccess :
                              srcResInfo.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
                         {
-                            if (finalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
-                            {
-                                AppendBarrier(D3D12RuntimeDevice::FromHandle(srcResInfo.hRuntimeResource),
-                                              transitions[finalAccess.prevTransition].access.access,
-                                              srcResInfo.initialAccess,
-                                              srcResInfo,
-                                              finalAccess.range);
-                            }
+                            const auto prevAccess = RenderGraph::CalcPreviousAccess(
+                                finalAccess.prevTransition, transitions.range_all(), srcResInfo);
+
+                            AppendBarrier(D3D12RuntimeDevice::FromHandle(srcResInfo.hRuntimeResource),
+                                          prevAccess,
+                                          srcResInfo.initialAccess,
+                                          srcResInfo,
+                                          finalAccess.range);
                         }
                     }
                 }
@@ -174,9 +185,8 @@ namespace rps
                     }
                     else
                     {
-                        const auto& prevAccess = (currTrans.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                                     ? transitions[currTrans.prevTransition].access.access
-                                                     : resInstance.initialAccess;
+                        const auto prevAccess = RenderGraph::CalcPreviousAccess(
+                            currTrans.prevTransition, transitions.range_all(), resInstance);
 
                         AppendBarrier(D3D12RuntimeDevice::FromHandle(resInstance.hRuntimeResource),
                                       prevAccess,
@@ -192,24 +202,24 @@ namespace rps
                     {
                         auto& resInstance = resourceInstances[iRes];
 
-                        if (!resInstance.isAliased || !m_deactivatedResMask.GetBit(iRes))
+                        RPS_ASSERT(!(resInstance.isAliased && resInstance.IsPersistent()));
+
+                        if (resInstance.hRuntimeResource && !resInstance.isAliased)
                         {
                             for (auto& finalAccess :
                                  resInstance.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
                             {
-                                if (finalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                {
-                                    AppendBarrier(D3D12RuntimeDevice::FromHandle(resInstance.hRuntimeResource),
-                                                  transitions[finalAccess.prevTransition].access.access,
-                                                  resInstance.initialAccess,
-                                                  resInstance,
-                                                  finalAccess.range);
-                                }
+                                const auto prevAccess = RenderGraph::CalcPreviousAccess(
+                                    finalAccess.prevTransition, transitions.range_all(), resInstance);
+
+                                AppendBarrier(D3D12RuntimeDevice::FromHandle(resInstance.hRuntimeResource),
+                                              prevAccess,
+                                              resInstance.initialAccess,
+                                              resInstance,
+                                              finalAccess.range);
                             }
                         }
                     }
-
-                    m_deactivatedResMask = {};
                 }
             }
 
@@ -226,9 +236,8 @@ namespace rps
                 const auto& currTrans   = transitions[cmd.cmdId];
                 const auto& resInstance = resourceInstances[currTrans.access.resourceId];
 
-                const auto& prevAccess = (currTrans.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                             ? transitions[currTrans.prevTransition].access.access
-                                             : resInstance.initialAccess;
+                const auto prevAccess =
+                    RenderGraph::CalcPreviousAccess(currTrans.prevTransition, transitions.range_all(), resInstance);
 
                 AppendBarrier(D3D12RuntimeDevice::FromHandle(resInstance.hRuntimeResource),
                               prevAccess,
@@ -273,6 +282,42 @@ namespace rps
                 auto barriers = batch.lateBarriers.GetConstRef(m_barriers);
                 pD3DCmdList->ResourceBarrier(barriers.size(), barriers.data());
             }
+        }
+
+        virtual void RecordResolveBatch(ID3D12GraphicsCommandList*      pD3DCmdList,
+                                        ConstArrayRef<D3D12ResolveInfo> resolveInfos) override
+        {
+            const uint32_t numResolves = uint32_t(resolveInfos.size());
+
+            RPS_ASSERT(numResolves <= D3D12ResolveInfo::RESOLVE_BATCH_SIZE);
+
+            D3D12_RESOURCE_BARRIER barriers[D3D12ResolveInfo::RESOLVE_BATCH_SIZE];
+
+            for (uint32_t i = 0; i < numResolves; i++)
+            {
+                auto& barrier                  = barriers[i];
+                barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                barrier.Transition.pResource   = resolveInfos[i].pSrc;
+                barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+                barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+                barrier.Transition.Subresource = resolveInfos[i].srcSubResource;
+            }
+
+            pD3DCmdList->ResourceBarrier(numResolves, barriers);
+
+            for (uint32_t i = 0; i < resolveInfos.size(); i++)
+            {
+                pD3DCmdList->ResolveSubresource(resolveInfos[i].pDst,
+                                                resolveInfos[i].dstSubResource,
+                                                resolveInfos[i].pSrc,
+                                                resolveInfos[i].srcSubResource,
+                                                resolveInfos[i].format);
+
+                std::swap(barriers[i].Transition.StateBefore, barriers[i].Transition.StateAfter);
+            }
+
+            pD3DCmdList->ResourceBarrier(numResolves, barriers);
         }
 
         static D3D12_RESOURCE_STATES CalcD3D12State(const RpsAccessAttr& access)
@@ -444,8 +489,7 @@ namespace rps
         ArenaVector<BarrierBatch>           m_barrierBatches;
         ArenaVector<D3D12_RESOURCE_BARRIER> m_barriers;
         ArenaVector<ID3D12Resource*>        m_discardResources;
-        ArenaBitVector<>                    m_deactivatedResMask;
     };
 }  // namespace rps
 
-#endif  //RPS_D3D12_BARRIER_H
+#endif  //RPS_D3D12_BARRIER_HPP

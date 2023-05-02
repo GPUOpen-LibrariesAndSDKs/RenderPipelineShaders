@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_API_H_
-#define _RPS_API_H_
+#ifndef RPS_API_H
+#define RPS_API_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,8 +30,8 @@ extern "C" {
 
 /// @brief Macro for defining a handle type to an internal implementation structure.
 ///
-/// A handle is a pointer to a type that is prefixed with _T. e.g: a handle called <c><i>RpsDevice</i></c> should have
-/// a matching structure available called <c><i>RpsDevice_T</i></c>.
+/// A handle is a pointer to an internal struct type with a name postfixed with _T. e.g: a handle called
+/// <c><i>RpsDevice</i></c> should have a matching structure available called <c><i>RpsDevice_T</i></c>.
 #define RPS_DEFINE_HANDLE(TypeName) typedef struct TypeName##_T* TypeName;
 
 //defines a bool() operator for checking if an opaque handle is NULL.
@@ -272,6 +272,16 @@ void rpsDeviceDestroy(RpsDevice hDevice);
 ///                                     NULL otherwise.
 void* rpsDeviceGetPrivateData(RpsDevice hDevice);
 
+/// @brief Log levels for diagnostics.
+typedef enum RpsDiagLogLevel
+{
+    RPS_DIAG_INFO = 0,
+    RPS_DIAG_WARNING,
+    RPS_DIAG_ERROR,
+    RPS_DIAG_FATAL,
+    RPS_DIAG_COUNT
+} RpsDiagLogLevel;
+
 /// @brief Sets the global debug printer which is used for diagnostic purposes when no device context is available.
 ///
 /// @param pPrinter                     Pointer to the printer to set.
@@ -281,6 +291,11 @@ void rpsSetGlobalDebugPrinter(const RpsPrinter* pPrinter);
 ///
 /// @returns                            Pointer to the current debug printer.
 const RpsPrinter* rpsGetGlobalDebugPrinter();
+
+/// @brief Sets the minimum diagnostic log level used by the global debug printer.
+///
+/// @param minLogLevel                  Minimum log level to set.
+void rpsSetGlobalDebugPrinterLogLevel(RpsDiagLogLevel minLogLevel);
 
 /// @} end defgroup RpsDevice
 
@@ -580,4 +595,4 @@ private:                                        \
 
 #endif  //__cplusplus
 
-#endif  //_RPS_API_H_
+#endif  //RPS_API_H

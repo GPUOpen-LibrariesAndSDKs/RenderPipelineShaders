@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_FORMAT_H_
-#define _RPS_FORMAT_H_
+#ifndef RPS_FORMAT_H
+#define RPS_FORMAT_H
 
 #include "rps/core/rps_api.h"
 
@@ -176,7 +176,7 @@ typedef enum RpsFormat
 
     /// 4-channel block compressed format with the first channel being a normalized, 5-bit unsigned integer SRGB value,
     /// the second one a normalized, 6-bit unsigned integer SRGB value, the third one a normalized, 5-bit unsigned
-    /// integer SRGB valu eand the last one a normalized, 0-bit or 1-bit unsigned integer SRGB value.
+    /// integer SRGB value and the last one a normalized, 0-bit or 1-bit unsigned integer SRGB value.
     RPS_FORMAT_BC1_UNORM_SRGB,
 
     /// 4-channel block compressed format with the first channel being a typeless 5-bit value, the second one a
@@ -351,4 +351,4 @@ const char* rpsFormatGetName(RpsFormat format);
 /// @} end defgroup RpsFormat
 /// @} end addtogroup RpsRenderGraphRuntimeResource
 
-#endif  // #ifndef _RPS_FORMAT_H_
+#endif  // #ifndef RPS_FORMAT_H

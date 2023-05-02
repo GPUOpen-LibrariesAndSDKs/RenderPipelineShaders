@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifdef _WIN32
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -11,11 +11,11 @@
 #error "TODO"
 #endif
 
-#include "test_multithreading_shared.h"
+#include "test_multithreading_shared.hpp"
 
 #include "rps/runtime/vk/rps_vk_runtime.h"
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_vk_renderer.h"
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_vk_renderer.hpp"
 
 class TestVkMultithreading : public RpsTestVulkanRenderer, public TestRpsMultithreading
 {
@@ -96,6 +96,11 @@ protected:
 protected:
     virtual void DrawGeometryPass(const RpsCmdCallbackContext* pContext) override final
     {
+        // begin cmd rp
+        RpsCmdRenderPassBeginInfo passBeginInfo = {};
+        passBeginInfo.flags                     = RPS_RUNTIME_RENDER_PASS_EXECUTE_SECONDARY_COMMAND_BUFFERS;
+        THREAD_SAFE_REQUIRE(rpsCmdBeginRenderPass(pContext, &passBeginInfo) == RPS_OK);
+
         if (m_geoPipeline == VK_NULL_HANDLE)
         {
             std::lock_guard<std::mutex> lock(m_cmdListMutex);
@@ -153,9 +158,10 @@ protected:
 
                 assert(cmdBuf == rpsVKCommandBufferFromHandle(pLocalContext->hCommandBuffer));
 
-                RpsRuntimeRenderPassFlags rpFlags = RPS_RUNTIME_RENDER_PASS_SECONDARY_COMMAND_BUFFER;
+                RpsCmdRenderPassBeginInfo rpBeginInfo = {};
+                rpBeginInfo.flags                     = RPS_RUNTIME_RENDER_PASS_SECONDARY_COMMAND_BUFFER;
 
-                RpsResult threadResult = rpsCmdBeginRenderPass(pLocalContext, rpFlags);
+                RpsResult threadResult = rpsCmdBeginRenderPass(pLocalContext, &rpBeginInfo);
                 if (threadResult != RPS_OK)
                     failCount++;
 
@@ -207,6 +213,8 @@ protected:
 
         VkCommandBuffer cmdBufPrimary = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
         vkCmdExecuteCommands(cmdBufPrimary, numThreads, vkCmdBufs);
+
+        THREAD_SAFE_REQUIRE(rpsCmdEndRenderPass(pContext) == RPS_OK);
     }
 
 private:

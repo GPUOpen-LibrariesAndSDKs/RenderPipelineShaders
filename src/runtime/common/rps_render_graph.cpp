@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_render_states.h"
 
@@ -26,14 +26,18 @@ namespace rps
         void* pMemory = device.Allocate(allocInfo);
         RPS_CHECK_ALLOC(pMemory);
 
-        *ppRenderGraph = new (pMemory) RenderGraph(device, pCreateInfo ? *pCreateInfo : RpsRenderGraphCreateInfo{});
+        auto pRuntimeDevice = RuntimeDevice::Get(device);
+        RpsRenderGraphCreateInfo renderGraphCreateInfo = pCreateInfo ? *pCreateInfo : RpsRenderGraphCreateInfo{};
+        pRuntimeDevice->PrepareRenderGraphCreation(renderGraphCreateInfo);
+
+        *ppRenderGraph = new (pMemory) RenderGraph(device, renderGraphCreateInfo);
 
         if (pCreateInfo)
         {
-            (*ppRenderGraph)->OnInit(*pCreateInfo);
+            (*ppRenderGraph)->OnInit(renderGraphCreateInfo);
         }
 
-        auto pRuntimeDevice = RuntimeDevice::Get(device);
+        
         if (pRuntimeDevice)
         {
             if ((*ppRenderGraph)->m_createInfo.numPhases == 0)
@@ -637,12 +641,12 @@ RpsResult rpsCmdCloneContext(const RpsCmdCallbackContext*  pContext,
         *pBackendContext, hCmdBufferForDerivedContext, ppDerivedContext);
 }
 
-RpsResult rpsCmdBeginRenderPass(const RpsCmdCallbackContext* pContext, RpsRuntimeRenderPassFlags flags)
+RpsResult rpsCmdBeginRenderPass(const RpsCmdCallbackContext* pContext, const RpsCmdRenderPassBeginInfo* pBeginInfo)
 {
     RPS_CHECK_ARGS(pContext);
 
     auto pBackendContext             = rps::RuntimeCmdCallbackContext::GetMutable(pContext);
-    pBackendContext->renderPassFlags = flags;
+    pBackendContext->renderPassFlags = pBeginInfo->flags;
 
     return pBackendContext->pRenderGraph->GetRuntimeBackend()->RecordCmdRenderPassBegin(*pBackendContext);
 }

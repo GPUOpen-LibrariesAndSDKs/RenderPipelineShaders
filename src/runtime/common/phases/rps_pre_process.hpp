@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_PRE_PROCESS_H_
-#define _RPS_PRE_PROCESS_H_
+#ifndef RPS_PRE_PROCESS_HPP
+#define RPS_PRE_PROCESS_HPP
 
 #include "rps/runtime/common/rps_render_states.h"
 
@@ -31,7 +31,7 @@ namespace rps
 
             RPS_V_RETURN(InitResourceInstances(context));
 
-            InitParamResources(context);
+            RPS_V_RETURN(InitParamResources(context));
 
             RPS_V_RETURN(InitCmdAccessInfos(context));
 
@@ -165,23 +165,60 @@ namespace rps
             uint32_t pendingResStart = 0;
             uint32_t pendingResCount = 0;
 
-            auto deactivateResourceInstance = [pRuntimeBackend](ResourceInstance& resInstance) {
+            auto fnDeactivateSingleResourceInstance = [pRuntimeBackend](ResourceInstance& resInstance) {
+                RPS_ASSERT(!resInstance.IsTemporalParent());
+
                 if (resInstance.hRuntimeResource)
                 {
                     pRuntimeBackend->DestroyRuntimeResourceDeferred(resInstance);
                 }
-                resInstance.desc.type       = RPS_RESOURCE_TYPE_UNKNOWN;
-                resInstance.isAliased       = false;
-                resInstance.isPendingCreate = false;
-                resInstance.isPendingInit   = false;
-                resInstance.allocPlacement  = {RPS_INDEX_NONE_U32, 0};
+                resInstance = ResourceInstance{};
             };
+
+            auto fnDeactivateResourceInstanceAndTemporalChildren = [&](ResourceInstance& resInstance) {
+                if (resInstance.IsTemporalParent())
+                {
+                    RPS_ASSERT(resInstance.temporalLayerOffset + resInstance.desc.temporalLayers <=
+                               resInstances.size());
+
+                    for (auto temporalSlice    = resInstances.begin() + resInstance.temporalLayerOffset,
+                              temporalSliceEnd = resInstances.begin() + resInstance.temporalLayerOffset +
+                                                 resInstance.desc.temporalLayers;
+                         temporalSlice != temporalSliceEnd;
+                         ++temporalSlice)
+                    {
+                        fnDeactivateSingleResourceInstance(*temporalSlice);
+                    }
+
+                    resInstance.temporalLayerOffset = RPS_INDEX_NONE_U32;
+                }
+
+                fnDeactivateSingleResourceInstance(resInstance);
+            };
+
+
+            // Deactivate resource instances beyond current resDecls length.
+
+            const size_t prevResInstanceCount = resInstances.size();
+
+            for (uint32_t iRes = resDecls.size(); iRes < prevResInstanceCount; iRes++)
+            {
+                auto& resInstance = resInstances[iRes];
+
+                // This range can contain temporal slices. We need to skip deactivating them directly
+                // as they are deactivated only when their parent is deactivated.
+                if (!resInstance.isTemporalSlice)
+                {
+                    fnDeactivateResourceInstanceAndTemporalChildren(resInstance);
+                }
+            }
 
             // Initialize resource instances
             for (uint32_t iRes = 0; iRes < resDecls.size(); iRes++)
             {
-                const auto& resDecl      = resDecls[iRes];
-                auto*       pResInstance = &resInstances[iRes];
+                const auto& resDecl          = resDecls[iRes];
+                auto*       pResInstance     = &resInstances[iRes];
+                const bool  bIsParamResource = (iRes < numParamResources);
 
                 if (!resDecl.desc)
                 {
@@ -193,22 +230,7 @@ namespace rps
                     }
                     pendingResStart = iRes + 1;
 
-                    if (pResInstance->IsTemporalParent())
-                    {
-                        RPS_ASSERT(pResInstance->temporalLayerOffset + pResInstance->desc.temporalLayers <=
-                                   resInstances.size());
-
-                        for (auto temporalSlice    = resInstances.begin() + pResInstance->temporalLayerOffset,
-                                  temporalSliceEnd = resInstances.begin() + pResInstance->temporalLayerOffset +
-                                                     pResInstance->desc.temporalLayers;
-                             temporalSlice != temporalSliceEnd;
-                             ++temporalSlice)
-                        {
-                            deactivateResourceInstance(*temporalSlice);
-                        }
-                    }
-
-                    deactivateResourceInstance(*pResInstance);
+                    fnDeactivateResourceInstanceAndTemporalChildren(*pResInstance);
 
                     continue;
                 }
@@ -254,13 +276,21 @@ namespace rps
                     bDescUpdated              = true;
                 }
 
-                SetRuntimeResourcePendingCreate(*pResInstance, bDescUpdated && (iRes >= numParamResources));
+                if (bDescUpdated && !bIsParamResource)
+                {
+                    pResInstance->InvalidateRuntimeResource(pRuntimeBackend);
+                }
                 pResInstance->isPendingInit = false;
+
+                pResInstance->SetInitialAccess(AccessAttr{});
 
                 // Handle temporal resources:
                 const bool isTemporalResource = pResInstance->desc.temporalLayers > 1;
                 if (isTemporalResource)
                 {
+                    // Force persistent flag for temporal resources
+                    pResInstance->desc.flags |= RPS_RESOURCE_FLAG_PERSISTENT_BIT;
+
                     RPS_V_RETURN(InitTemporalSlices(context, resInstances, iRes));
                 }
             }
@@ -291,68 +321,95 @@ namespace rps
             return RPS_OK;
         }
 
+        // Checks if a temporal slice needs recreation. Certain properties such as image dimensions
+        // may vary between temporal slices since just a single slice is updated when it is found to be different
+        // to its parent.
+        static bool ShouldRecreateTemporalSlice(const ResourceInstance& temporalSlice, const ResourceInstance& parent)
+        {
+            RPS_ASSERT((temporalSlice.desc.type == parent.desc.type) &&
+                       (temporalSlice.desc.temporalLayers == parent.desc.temporalLayers));
+
+            return (!temporalSlice.hRuntimeResource) || (temporalSlice.allAccesses != parent.allAccesses) ||
+                   (temporalSlice.desc != parent.desc);
+        }
+
         inline RpsResult InitTemporalSlices(RenderGraphUpdateContext&      context,
                                             ArenaVector<ResourceInstance>& resInstances,
-                                            uint32_t                       resIndex)
+                                            uint32_t                       parentResIndex)
         {
-            ResourceInstance* pResInstance = &resInstances[resIndex];
+            const uint32_t    numParamResources      = context.renderGraph.GetSignature().GetMaxExternalResourceCount();
+            const bool        bIsParentParamResource = (parentResIndex < numParamResources);
+            ResourceInstance& parentResInstance      = resInstances[parentResIndex];
 
-            const uint32_t numTemporalLayers = pResInstance->desc.temporalLayers;
+            const uint32_t numTemporalLayers = parentResInstance.desc.temporalLayers;
 
-            if (pResInstance->temporalLayerOffset == RPS_INDEX_NONE_U32)
+            if (parentResInstance.temporalLayerOffset == RPS_INDEX_NONE_U32)
             {
                 // First-time seeing this temporal resource, temporal slices are not allocated yet:
 
                 uint32_t temporalLayerOffset = uint32_t(resInstances.size());
 
-                ResourceInstance tempResInstCopy = *pResInstance;
+                // We don't want to set isPending(RuntimeResource)Create flag on temporal parent.
+                // But when the first time InvalidateRuntimeResource is called on a new temporal parent resource,
+                // the temporalLayerOffset is not assigned yet and thus isPendingCreate can be set. Unsetting it now.
+                parentResInstance.isPendingCreate = false;
+
+                ResourceInstance tempResInstCopy = parentResInstance;
                 tempResInstCopy.isTemporalSlice  = true;
-                // Force persistent flag for temporal resources
-                tempResInstCopy.desc.flags |= RPS_RESOURCE_FLAG_PERSISTENT_BIT;
+
+                if (!bIsParentParamResource)
+                {
+                    tempResInstCopy.InvalidateRuntimeResource(context.renderGraph.GetRuntimeBackend());
+                }
 
                 auto* pTemporalLayers = resInstances.grow(numTemporalLayers, tempResInstCopy);
-                pResInstance          = &resInstances[resIndex];
-
                 RPS_RETURN_ERROR_IF(!pTemporalLayers, RPS_ERROR_OUT_OF_MEMORY);
 
+                // resInstances may have reallocated. create new reference.
+                ResourceInstance& parentResInstanceReallocated = resInstances[parentResIndex];
+
                 // Mark the parent resource as a pointer to the temporal layers only.
-                pResInstance->temporalLayerOffset = temporalLayerOffset;
-                RPS_ASSERT(pResInstance->IsTemporalParent());
+                parentResInstanceReallocated.temporalLayerOffset = temporalLayerOffset;
+
+                RPS_ASSERT(parentResInstanceReallocated.IsTemporalParent());
 
                 RPS_V_RETURN(m_pRuntimeDevice->InitializeSubresourceInfos(
                     resInstances.range(temporalLayerOffset, numTemporalLayers)));
             }
             else
             {
-                RPS_ASSERT(pResInstance->temporalLayerOffset + numTemporalLayers <= resInstances.size());
+                RPS_ASSERT(!parentResInstance.isPendingCreate);
+                RPS_ASSERT(parentResInstance.temporalLayerOffset + numTemporalLayers <= resInstances.size());
 
                 const uint32_t currTemporalLayerOffset =
-                    pResInstance->temporalLayerOffset + context.pUpdateInfo->frameIndex % numTemporalLayers;
+                    parentResInstance.temporalLayerOffset + context.pUpdateInfo->frameIndex % numTemporalLayers;
 
                 auto& temporalSlice = resInstances[currTemporalLayerOffset];
 
-                RPS_ASSERT(temporalSlice.resourceDeclId == resIndex);
+                RPS_ASSERT(temporalSlice.resourceDeclId == parentResIndex);
                 RPS_ASSERT(temporalSlice.isTemporalSlice);
-                RPS_ASSERT(temporalSlice.isExternal == pResInstance->isExternal);
+                RPS_ASSERT(temporalSlice.isExternal == parentResInstance.isExternal);
 
-                temporalSlice.desc = pResInstance->desc;
-                // Force persistent flag for temporal resources
-                temporalSlice.desc.flags |= RPS_RESOURCE_FLAG_PERSISTENT_BIT;
+                if (ShouldRecreateTemporalSlice(temporalSlice, parentResInstance))
+                {
+                    temporalSlice.desc                 = parentResInstance.desc;
+                    temporalSlice.fullSubresourceRange = parentResInstance.fullSubresourceRange;
+                    temporalSlice.numSubResources      = parentResInstance.numSubResources;
+                    temporalSlice.allAccesses          = parentResInstance.allAccesses;
+                    if (!temporalSlice.isExternal)
+                    {
+                        temporalSlice.InvalidateRuntimeResource(context.renderGraph.GetRuntimeBackend());
+                    }
+                }
 
-                temporalSlice.fullSubresourceRange = pResInstance->fullSubresourceRange;
-                temporalSlice.numSubResources      = pResInstance->numSubResources;
-                temporalSlice.allAccesses          = pResInstance->allAccesses;
-                temporalSlice.initialAccess        = pResInstance->initialAccess;
-                temporalSlice.finalAccesses        = pResInstance->finalAccesses;
-
-                // TODO: Should compare current resDesc vs this temporal slice to determine dirty bit
-                SetRuntimeResourcePendingCreate(temporalSlice, pResInstance->isPendingCreate);
+                temporalSlice.SetInitialAccess(AccessAttr{});
+                temporalSlice.finalAccesses = {};
             }
 
             return RPS_OK;
         }
 
-        inline void InitParamResources(RenderGraphUpdateContext& context)
+        inline RpsResult InitParamResources(RenderGraphUpdateContext& context)
         {
             auto& resInstances = context.renderGraph.GetResourceInstances();
             auto& signature    = context.renderGraph.GetSignature();
@@ -370,7 +427,9 @@ namespace rps
                 const auto       paramId   = signature.GetResourceParamId(iRes);
                 const ParamDecl& paramDecl = signature.GetParamDecls()[paramId];
 
-                resInstance.initialAccess = paramDecl.access;
+                resInstance.isExternal = true;
+                resInstance.SetInitialAccess(paramDecl.access);
+                resInstance.prevFinalAccess = paramDecl.access;
 
                 // Skip out resource at input.
                 // TODO: May need to handle inout?
@@ -386,16 +445,20 @@ namespace rps
                             RPS_ASSERT(outputParamResIds[iElem] < resInstances.size());
 
                             auto& sourceResInstance = resInstances[outputParamResIds[iElem]];
+                            
+                            RPS_ASSERT( sourceResInstance.isExternal == false );
 
+                            // TODO: support temporal output resources.
+                            RPS_RETURN_ERROR_IF(sourceResInstance.IsTemporalParent(), RPS_ERROR_NOT_IMPLEMENTED);
+
+                            // TODO: Support assigning a param resource to an out param resource.
                             // TODO: Check if this works with temporal resources.
-                            sourceResInstance.initialAccess = paramDecl.access;
+                            sourceResInstance.SetInitialAccess(paramDecl.access);
                         }
                     }
 
                     continue;
                 }
-
-                resInstance.isExternal = true;
 
                 // Copy param resource handles etc.
 
@@ -412,12 +475,17 @@ namespace rps
                     {
                         ResourceInstance& temporalSlice = resInstances[resInstance.temporalLayerOffset + iT];
                         temporalSlice.isExternal        = true;
-                        temporalSlice.initialAccess     = resInstance.initialAccess;
+                        temporalSlice.isPendingCreate   = false;
+                        temporalSlice.SetInitialAccess(resInstance.initialAccess);
+                        temporalSlice.prevFinalAccess =
+                            pExternResArray ? resInstance.initialAccess : temporalSlice.prevFinalAccess;
                         temporalSlice.hRuntimeResource =
                             pExternResArray ? pExternResArray[iT] : temporalSlice.hRuntimeResource;
                     }
                 }
             }
+
+            return RPS_OK;
         }
 
         inline RpsResult InitCmdAccessInfos(RenderGraphUpdateContext& context)
@@ -759,7 +827,9 @@ namespace rps
             if (resInstances[resInstanceId].desc.temporalLayers > 1)
             {
                 resInstanceId = resInstances[resInstanceId].temporalLayerOffset +
-                                uint32_t(frameIndex % resInstances[resInstanceId].desc.temporalLayers);
+                                ((frameIndex - rpsMin(view.temporalLayer, static_cast<uint32_t>(frameIndex))) %
+                                    resInstances[resInstanceId].desc.temporalLayers);
+
             }
 
             auto& resInstance = resInstances[resInstanceId];
@@ -786,7 +856,8 @@ namespace rps
                 if (rpsAnyBitsSet(view.flags, RPS_RESOURCE_VIEW_FLAG_CUBEMAP_BIT))
                 {
                     // TODO: If recreation is needed is a per-API property.
-                    bPendingRecreate |= !(resInstance.desc.flags & RPS_RESOURCE_FLAG_CUBEMAP_COMPATIBLE_BIT);
+                    bPendingRecreate |=
+                        !rpsAnyBitsSet(resInstance.desc.flags, RPS_RESOURCE_FLAG_CUBEMAP_COMPATIBLE_BIT);
                     resInstance.desc.flags |= RPS_RESOURCE_FLAG_CUBEMAP_COMPATIBLE_BIT;
                 }
             }
@@ -823,26 +894,12 @@ namespace rps
 
             // TODO: Consider propagate temporal resource slice access back to parent and all siblings.
 
-            SetRuntimeResourcePendingCreate(resInstance, bPendingRecreate);
+            if (bPendingRecreate)
+            {
+                resInstance.InvalidateRuntimeResource(m_pRuntimeBackend);
+            }
 
             return RPS_OK;
-        }
-
-        inline void SetRuntimeResourcePendingCreate(ResourceInstance& resourceInstance, bool bPendingCreate)
-        {
-            if (bPendingCreate && !resourceInstance.isPendingCreate && !resourceInstance.isExternal)
-            {
-                if (resourceInstance.hRuntimeResource)
-                {
-                    m_pRuntimeBackend->DestroyRuntimeResourceDeferred(resourceInstance);
-                    RPS_ASSERT(
-                        !resourceInstance.hRuntimeResource &&
-                        "Bad DestroyRuntimeResourceDeferred implementation - expect hRuntimeResource t= be cleared");
-                }
-
-                resourceInstance.allocPlacement  = {RPS_INDEX_NONE_U32, 0};
-                resourceInstance.isPendingCreate = true;
-            }
         }
 
     private:
@@ -853,4 +910,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //_RPS_PRE_PROCESS_H_
+#endif  //RPS_PRE_PROCESS_HPP

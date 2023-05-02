@@ -1,12 +1,11 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_TEST_COMMON_H_
-#define _RPS_TEST_COMMON_H_
+#pragma once
 
 #include "rps/rps.h"
 
@@ -17,7 +16,7 @@
 #include <inttypes.h>
 #include <algorithm>
 
-#include "app_framework/afx_common_helpers.h"
+#include "app_framework/afx_common_helpers.hpp"
 
 #define RPS_TEST_COUNTOF(A) (std::extent<decltype(A)>::value)
 
@@ -50,7 +49,7 @@ static int g_NumMallocs = 0;
 static void* CountedMalloc(void* pContext, size_t size, size_t alignment)
 {
     g_NumMallocs++;
-#if _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
     return _aligned_malloc(size, alignment);
 #else
     const size_t alignedSize = alignment ? (size + (alignment - 1)) & ~(alignment - 1) : size;
@@ -61,7 +60,7 @@ static void* CountedMalloc(void* pContext, size_t size, size_t alignment)
 static void CountedFree(void* pContext, void* ptr)
 {
     g_NumMallocs--;
-#if _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
     _aligned_free(ptr);
 #else
     free(ptr);
@@ -166,10 +165,10 @@ RPS_TEST_MAYBE_UNUSED static void rpsTestUtilDestroyDevice(RpsDevice device)
     REQUIRE(rpsTestUtilGetMallocCounter() == 0);
 }
 
-#define RPS_TEST_MALLOC_CHECKPOINT(Id)                const uint32_t _RPS_MALLOC_COUNTER_##Id = rpsTestUtilGetMallocCounter()
-#define RPS_TEST_MALLOC_COUNTER_EQUAL(Id1, Id2)       REQUIRE(_RPS_MALLOC_COUNTER_##Id1 == _RPS_MALLOC_COUNTER_##Id2)
-#define RPS_TEST_MALLOC_COUNTER_COMPARE(Id1, Op, Id2) REQUIRE(_RPS_MALLOC_COUNTER_##Id1 Op _RPS_MALLOC_COUNTER_##Id2)
-#define RPS_TEST_MALLOC_COUNTER_EQUAL_CURRENT(Id)     REQUIRE(_RPS_MALLOC_COUNTER_##Id == rpsTestUtilGetMallocCounter())
+#define RPS_TEST_MALLOC_CHECKPOINT(Id)                const uint32_t RPS_MALLOC_COUNTER_##Id = rpsTestUtilGetMallocCounter()
+#define RPS_TEST_MALLOC_COUNTER_EQUAL(Id1, Id2)       REQUIRE(RPS_MALLOC_COUNTER_##Id1 == RPS_MALLOC_COUNTER_##Id2)
+#define RPS_TEST_MALLOC_COUNTER_COMPARE(Id1, Op, Id2) REQUIRE(RPS_MALLOC_COUNTER_##Id1 Op RPS_MALLOC_COUNTER_##Id2)
+#define RPS_TEST_MALLOC_COUNTER_EQUAL_CURRENT(Id)     REQUIRE(RPS_MALLOC_COUNTER_##Id == rpsTestUtilGetMallocCounter())
 
 extern "C" {
 
@@ -187,7 +186,7 @@ void REQUIRE_OK_PROXY(RpsResult result, const char* expr, const char* file, int 
 
 // TODO: impl other platforms.
 #ifdef _WIN32
-#include "rps_test_win32.h"
+#include "rps_test_win32.hpp"
 #endif
 
 #else  //__cplusplus
@@ -201,5 +200,3 @@ extern void REQUIRE_OK_PROXY(RpsResult result, const char* expr, const char* fil
 #define RPS_TEST_COUNTOF(A) (sizeof(A) / sizeof(A[0]))
 
 #endif  //__cplusplus
-
-#endif  //_RPS_TEST_COMMON_H_

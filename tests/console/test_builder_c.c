@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "utils/rps_test_common.h"
 
@@ -131,17 +131,30 @@ RpsResult buildRenderToTexture(RpsRenderGraphBuilder cmdBuf, const RpsConstant* 
 
             RpsVariable ppTriArgs[] = {pTriangleMsaaRTView, pClearValue, pUseMsaa, pTriangleRTView};
             rpsRenderGraphAddNode(
-                cmdBuf, triangleNodeId, NODE_ID_MSAA_TRIANGLE, NULL, NULL, ppTriArgs, RPS_TEST_COUNTOF(ppTriArgs));
+                cmdBuf, triangleNodeId, NODE_ID_MSAA_TRIANGLE, NULL, NULL, RPS_CMD_CALLBACK_FLAG_NONE, ppTriArgs, RPS_TEST_COUNTOF(ppTriArgs));
         }
         else
         {
             RpsVariable ppTriArgs[] = {pTriangleRTView, pClearValue, pUseMsaa};
-            rpsRenderGraphAddNode(
-                cmdBuf, triangleNodeId, NODE_ID_TRIANGLE, NULL, NULL, ppTriArgs, RPS_TEST_COUNTOF(ppTriArgs));
+            rpsRenderGraphAddNode(cmdBuf,
+                                  triangleNodeId,
+                                  NODE_ID_TRIANGLE,
+                                  NULL,
+                                  NULL,
+                                  RPS_CMD_CALLBACK_FLAG_NONE,
+                                  ppTriArgs,
+                                  RPS_TEST_COUNTOF(ppTriArgs));
         }
 
         RpsVariable ppQuadArgs[] = {pTriangleRTView, pBackBufferView};
-        rpsRenderGraphAddNode(cmdBuf, quadNodeId, NODE_BLT, NULL, NULL, ppQuadArgs, RPS_TEST_COUNTOF(ppQuadArgs));
+        rpsRenderGraphAddNode(cmdBuf,
+                              quadNodeId,
+                              NODE_BLT,
+                              NULL,
+                              NULL,
+                              RPS_CMD_CALLBACK_FLAG_NONE,
+                              ppQuadArgs,
+                              RPS_TEST_COUNTOF(ppQuadArgs));
     }
     else
     {
@@ -149,8 +162,14 @@ RpsResult buildRenderToTexture(RpsRenderGraphBuilder cmdBuf, const RpsConstant* 
         RpsBool* pUseMsaa = rpsRenderGraphAllocateDataOfTypeAndCopyFrom(cmdBuf, RpsBool, &bUseMSAA);
 
         RpsVariable ppTriArgs[] = {pBackBufferView, pClearValue, pUseMsaa, NULL};
-        rpsRenderGraphAddNode(
-            cmdBuf, triangleNodeId, NODE_ID_TRIANGLE, NULL, NULL, ppTriArgs, pTriangleNodeDesc->numParams);
+        rpsRenderGraphAddNode(cmdBuf,
+                              triangleNodeId,
+                              NODE_ID_TRIANGLE,
+                              NULL,
+                              NULL,
+                              RPS_CMD_CALLBACK_FLAG_NONE,
+                              ppTriArgs,
+                              pTriangleNodeDesc->numParams);
     }
 
     return RPS_OK;

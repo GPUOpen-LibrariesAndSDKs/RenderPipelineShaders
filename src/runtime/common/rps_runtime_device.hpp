@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_RUNTIME_DEVICE_H_
-#define _RPS_RUNTIME_DEVICE_H_
+#ifndef RPS_RUNTIME_DEVICE_HPP
+#define RPS_RUNTIME_DEVICE_HPP
 
 #include "rps/core/rps_api.h"
 #include "rps/runtime/common/rps_runtime.h"
@@ -95,6 +95,15 @@ namespace rps
         virtual RpsImageAspectUsageFlags GetImageAspectUsages(uint32_t aspectMask) const
         {
             return RPS_IMAGE_ASPECT_UNKNOWN;
+        }
+
+        virtual void PrepareRenderGraphCreation(RpsRenderGraphCreateInfo& renderGraphCreateInfo) const
+        {
+            //Memory aliasing always requires lifetime analysis
+            if (!rpsAnyBitsSet(renderGraphCreateInfo.renderGraphFlags, RPS_RENDER_GRAPH_NO_GPU_MEMORY_ALIASING))
+            {
+                renderGraphCreateInfo.renderGraphFlags &= (~(RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS));
+            }
         }
 
     public:
@@ -222,4 +231,4 @@ namespace rps
 
 }  // namespace rps
 
-#endif  //_RPS_RUNTIME_DEVICE_H_
+#endif  //RPS_RUNTIME_DEVICE_HPP

@@ -1,27 +1,27 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_RUNTIME_UTILS_H_
-#define _RPS_RUNTIME_UTILS_H_
+#ifndef RPS_RUNTIME_UTIL_HPP
+#define RPS_RUNTIME_UTIL_HPP
 
 #include "rps/runtime/common/rps_runtime.h"
 #include "runtime/common/rps_render_graph_resource.hpp"
 
 namespace rps
 {
-#define RPS_V_REPORT_AND_RETURN(Context, Expr)                      \
-    do                                                              \
-    {                                                               \
-        RpsResult _RPS_RESULT_TEMP__ = Expr;                        \
-        if (_RPS_RESULT_TEMP__ != RPS_OK)                           \
-        {                                                           \
-            RPS_DIAG_RESULT_CODE((#Expr), _RPS_RESULT_TEMP__);      \
-            rpsCmdCallbackReportError(Context, _RPS_RESULT_TEMP__); \
-        }                                                           \
+#define RPS_V_REPORT_AND_RETURN(Context, Expr)                              \
+    do                                                                      \
+    {                                                                       \
+        RpsResult RPS_RESULT_TEMP = Expr;                                   \
+        if (RPS_RESULT_TEMP != RPS_OK)                                      \
+        {                                                                   \
+            RPS_DIAG_RESULT_CODE(RPS_DIAG_ERROR, (#Expr), RPS_RESULT_TEMP); \
+            rpsCmdCallbackReportError(Context, RPS_RESULT_TEMP);            \
+        }                                                                   \
     } while (0)
 
     static inline void CanonicalizeMipLevels(ResourceDescPacked& resDesc)
@@ -112,4 +112,4 @@ namespace rps
 
 }  // namespace rps
 
-#endif  //_RPS_RUNTIME_UTILS_H_
+#endif  //RPS_RUNTIME_UTIL_HPP

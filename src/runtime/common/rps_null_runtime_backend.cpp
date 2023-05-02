@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "runtime/common/rps_render_graph.hpp"
 
@@ -30,7 +30,7 @@ namespace rps
                                                  const RpsRenderGraphRecordCommandInfo& recordInfo) const
     {
         //Fallback cmd recording for null runtime and missing runtimes
-        RuntimeCmdCallbackContext cmdCbCtx{nullptr, recordInfo};
+        RuntimeCmdCallbackContext cmdCbCtx{this, recordInfo};
 
         for (uint32_t rtCmdId    = recordInfo.cmdBeginIndex,
                       rtCmdIdEnd = uint32_t(recordInfo.cmdBeginIndex + recordInfo.numCmds);
@@ -51,6 +51,8 @@ namespace rps
                 cmdCbCtx.ppArgs              = cmd.args.data();
                 cmdCbCtx.numArgs             = uint32_t(cmd.args.size());
                 cmdCbCtx.userTag             = cmd.tag;
+                cmdCbCtx.pNodeDeclInfo       = cmdInfo.pNodeDecl;
+                cmdCbCtx.pCmdInfo            = &cmdInfo;
                 cmdCbCtx.pCmd                = &cmd;
                 cmdCbCtx.cmdId               = runtimeCmdInfo.cmdId;
 

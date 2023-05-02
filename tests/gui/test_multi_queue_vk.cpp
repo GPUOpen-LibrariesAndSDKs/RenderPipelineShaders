@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifdef _WIN32
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -11,13 +11,11 @@
 #error "TODO"
 #endif
 
-#include "test_multi_queue_shared.h"
+#include "test_multi_queue_shared.hpp"
 
 #include "rps/runtime/vk/rps_vk_runtime.h"
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_vk_renderer.h"
-
-using namespace DirectX;
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_vk_renderer.hpp"
 
 class TestVKMultiQueue : public RpsTestVulkanRenderer, public TestRpsMultiQueue
 {
@@ -535,6 +533,7 @@ private:
 
         uint32_t numShaderStages = 1;
 
+        char psName[128];
         if (psEntry)
         {
             smCI.pCode    = reinterpret_cast<const uint32_t*>(psCode.data());
@@ -542,7 +541,6 @@ private:
 
             ThrowIfFailedVK(vkCreateShaderModule(m_device, &smCI, nullptr, &psModule));
 
-            char psName[128];
             sprintf_s(psName, "%S", psEntry);
 
             shaderStages[numShaderStages].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -553,6 +551,7 @@ private:
             numShaderStages++;
         }
 
+        char gsName[128];
         if (gsEntry)
         {
             smCI.pCode    = reinterpret_cast<const uint32_t*>(gsCode.data());
@@ -560,7 +559,6 @@ private:
 
             ThrowIfFailedVK(vkCreateShaderModule(m_device, &smCI, nullptr, &gsModule));
 
-            char gsName[128];
             sprintf_s(gsName, "%S", gsEntry);
 
             shaderStages[numShaderStages].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -604,11 +602,10 @@ private:
 
     void UpdatePipeline(uint64_t frameIndex, uint64_t completedFrameIndex)
     {
-        RpsResourceDesc    backBufferDesc;
-        RpsRuntimeResource backBuffers[16];
-        GetBackBuffers(backBufferDesc, backBuffers, RPS_TEST_COUNTOF(backBuffers));
+        RpsResourceDesc                        backBufferDesc;
+        const std::vector<RpsRuntimeResource>& backBuffers = GetBackBuffers(backBufferDesc);
 
-        TestRpsMultiQueue::UpdateRpsPipeline(frameIndex, completedFrameIndex, backBufferDesc, backBuffers);
+        TestRpsMultiQueue::UpdateRpsPipeline(frameIndex, completedFrameIndex, backBufferDesc, backBuffers.data());
     }
 
 private:

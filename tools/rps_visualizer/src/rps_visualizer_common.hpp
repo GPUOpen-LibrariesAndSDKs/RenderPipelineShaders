@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_RESOURCE_VISUALIZER_COMMON_HPP
-#define RPS_RESOURCE_VISUALIZER_COMMON_HPP
+#ifndef RPS_VISUALIZER_COMMON_HPP
+#define RPS_VISUALIZER_COMMON_HPP
 
 #include "runtime/common/rps_render_graph.hpp"
 
@@ -77,4 +77,4 @@ namespace rps
 
 }  // namespace rps
 
-#endif  //RPS_RESOURCE_VISUALIZER_COMMON_HPP
+#endif  //RPS_VISUALIZER_COMMON_HPP

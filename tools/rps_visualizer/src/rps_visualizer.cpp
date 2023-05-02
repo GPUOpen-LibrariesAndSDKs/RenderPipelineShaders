@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps_visualizer.hpp"
 
@@ -147,10 +147,15 @@ namespace rps
             else if (rtCmdInfo.HasTransitionInfo())
             {
                 const auto& transitionInfo = pRenderGraph->GetTransitionInfo(rtCmdInfo.GetTransitionId());
-                const auto& prevAccess     = (transitionInfo.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                                 ? pRenderGraph->GetTransitionInfo(transitionInfo.prevTransition).access
-                                                 : transitionInfo.access;
-                m_accessVisInfos.emplace_back(prevAccess);
+
+                CmdAccessInfo prevAccessInfo = transitionInfo.access;
+
+                prevAccessInfo.access = RenderGraph::CalcPreviousAccess(
+                    transitionInfo.prevTransition,
+                    pRenderGraph->GetTransitions().crange_all(),
+                    pRenderGraph->GetResourceInstance(transitionInfo.access.resourceId));
+
+                m_accessVisInfos.emplace_back(prevAccessInfo);
                 m_accessVisInfos.emplace_back(transitionInfo.access);
             }
 
@@ -164,11 +169,16 @@ namespace rps
         {
             const auto& resInfo = m_resourceInfos[iRes];
 
-            if (resInfo.lifetimeBegin != UINT32_MAX)
+            const size_t timelineMax           = m_timelinePosToCmdIdMap.size();
+            const bool   bLifetimeBeginDefined = (resInfo.lifetimeBegin != ResourceInstance::LIFETIME_UNDEFINED);
+            const bool   bLifetimeEndDefined   = (resInfo.lifetimeEnd != ResourceInstance::LIFETIME_UNDEFINED);
+
+            if (resInfo.lifetimeBegin <= resInfo.lifetimeEnd)
             {
-                resourceVisInfos[iRes] = ResourceVisualizationInfo(cmdVisInfos[resInfo.lifetimeBegin].timelinePosition,
-                                                                   cmdVisInfos[resInfo.lifetimeEnd].timelinePosition,
-                                                                   pRenderGraph->GetResourceInstance(iRes).isAliased);
+                resourceVisInfos[iRes] = ResourceVisualizationInfo(
+                    bLifetimeBeginDefined ? cmdVisInfos[resInfo.lifetimeBegin].timelinePosition : 0,
+                    bLifetimeEndDefined ? cmdVisInfos[resInfo.lifetimeEnd].timelinePosition : uint32_t(timelineMax),
+                    pRenderGraph->GetResourceInstance(iRes).isAliased);
             }
         }
 

@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #error "This header file is not for include. It is reproduced here for documentation purposes."
 
@@ -86,8 +86,9 @@ AccessAttribute out;
 /// readonly specifies that the node can read the resource but will never
 /// write to it.
 ///
-/// When applied to render graph entry point parameters, it refers to the external
-/// access outside the render graph when the render graph is executed.
+/// When applied to render graph entry point parameters (including "out" parameters), it refers to external accesses
+/// outside of the execution of the current render graph. This means RPS expects the resource to be in this access state
+/// when it enters the render graph and will transit it to this state before exiting the render graph.
 ///
 /// Example usage: `[readonly(ps, cs)] texture myShaderResourceView`
 AccessAttribute readonly(x);
@@ -100,10 +101,12 @@ AccessAttribute readonly(x);
 /// being passed to the node.
 ///
 /// writeonly specifies that the node can write to the resource and will not read
-/// from it.
+/// from it. This implies the previous data can be discarded, and is equivalent to
+/// `[readwrite(discard_before, ...)]`.
 ///
-/// When applied to render graph entry point parameters, it refers to the external
-/// access outside the render graph when the render graph is executed.
+/// When applied to render graph entry point parameters (including "out" parameters), it refers to external accesses
+/// outside of the execution of the current render graph. This means RPS expects the resource to be in this access state
+/// when it enters the render graph and will transit it to this state before exiting the render graph.
 ///
 /// Example usage: `[writeonly(rendertarget)] texture myDiscardRenderTargetView`
 AccessAttribute writeonly(x);
@@ -117,8 +120,9 @@ AccessAttribute writeonly(x);
 ///
 /// readwrite specifies that the node can both read and write the resource.
 ///
-/// When applied to render graph entry point parameters, it refers to the external
-/// access outside the render graph when the render graph is executed.
+/// When applied to render graph entry point parameters (including "out" parameters), it refers to external accesses
+/// outside of the execution of the current render graph. This means RPS expects the resource to be in this access state
+/// when it enters the render graph and will transit it to this state before exiting the render graph.
 ///
 /// Example usage: `[readwrite(rendertarget)] texture myRenderTargetView`
 AccessAttribute readwrite(x);
@@ -192,12 +196,12 @@ AccessAttributeArgument stencil;
 
 /// An access attribute argument indicating the resource view will
 /// be accessed as a copy source (when used with the <c>readonly</c> attribute)
-/// or destination (when used with the <c>writeonly</c> attribute).
+/// or destination (when used with the <c>writeonly</c> or <c>readwrite</c> attributes).
 AccessAttributeArgument copy;
 
 /// An access attribute argument indicating the resource view will
 /// be accessed as a resolve source (when used with the <c>readonly</c> attribute)
-/// or destination (when used with the <c>writeonly</c> attribute).
+/// or destination (when used with the <c>writeonly</c> or <c>readwrite</c> attributes).
 AccessAttributeArgument resolve;
 
 /// An access attribute argument indicating the resource view will
@@ -254,59 +258,87 @@ AccessAttributeArgument rtas;
 /// be accessed as a cubemap view.
 AccessAttributeArgument cubemap;
 
+/// An access attribute argument indicating the resource view is cleared before
+/// the current access. Usually used together with other access args.
+/// Implied if the node has a parameter with a clear value semantic (e.g.
+/// SV_ClearColor, SV_ClearDepth) which matches the resource binding slot specified
+/// by the semantic of the current argument.
+AccessAttributeArgument clear;
+
+/// An access attribute argument indicating existing data can
+/// be discarded before the current node.
+///
+/// If the same subresource is accessed by multiple params of the same node,
+/// it can be discarded only if all of these params have the discard_before flag.
+AccessAttributeArgument discard_before;
+
+/// An access attribute argument indicating data can be discarded
+/// after the current node.
+///
+/// Usually, the runtime automatically determines if the subresource data can be
+/// discarded after a node by checking if it may be read later on. (For example,
+/// if the current access is the last access of a transient resource in a frame,
+/// or if the next access is a full subresource overwrite.). As a result, this
+/// argument typically doesn't need to be specified explicitly. It is provided
+/// to allow forcing this behavior for debugging and testing purposes.
+///
+/// If the same subresource is accessed by multiple params of the same node,
+/// it can be discarded after only if all of these params have the discard_after flag.
+AccessAttributeArgument discard_after;
+
 /// A view of a render target texture.
 ///
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define rtv             [readwrite(rendertarget)] texture
 
 /// A view of a depth/stencil texture.
 ///
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define dsv             [readwrite(depth, stencil)] texture
 
 /// A view of a render target resource that can be discarded before writing.
 ///
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define discard_rtv     [writeonly(rendertarget)] texture 
 
 /// A texture shader resource view accessible from both pixel shaders and
 /// non-pixel shaders.
 /// 
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define srv             [readonly(ps, cs)] texture
 
 /// A buffer shader resource view accessible from both pixel shaders and 
 /// non-pixel shaders.
 /// 
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define srv_buf         [readonly(ps, cs)] buffer
 
 /// A texture shader resource view that can only be accessed by pixel shaders.
 /// 
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define ps_srv          [readonly(ps)] texture
 
 /// A buffer shader resource view that can only be accessed by pixel shaders.
 /// 
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define ps_srv_buf      [readonly(ps)] buffer
 
-/// An unordered access texture resource.
+/// An unordered access texture resource view.
 ///
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define uav             [readwrite(ps, cs)] texture
 
-/// An unordered access buffer resource.
+/// An unordered access buffer resource view.
 ///
-/// This define is a shortcut for using the underlaying access attributes
+/// This define is a shortcut for using the underlying access attributes
 /// directly.
 #define uav_buf         [readwrite(ps, cs)] buffer
 
@@ -559,7 +591,13 @@ typedef struct texture
     /// @returns                    The derived texture view.
     texture format(in uint viewFormat);
     /// Create a derived texture view with the given temporal layer for temporal textures.
-    /// 0 means the current frame (default), 1 means the previous frame, 2 means two frames before, etc.
+    /// 
+    /// 0 means the current frame (default), 1 means the previous frame, 2 means two frames before, etc. If
+    /// temporalLayer is larger than the amount of previous frames, temporalLayer = RpsRenderGraphUpdateInfo::frameIndex
+    /// will be used instead, resolving to the very first slice. Accesses with temporalLayer >= ResourceDesc::TemporalLayers
+    /// use temporalLayer % ResourceDesc::TemporalLayers instead. For any access with temporalLayer = n you may need to
+    /// make sure that n frames ago or earlier all attributes of the access already have at least been used once for an
+    /// access to the resource. Note: This requirement is a temporary solution and will change in the future.
     ///
     /// @param temporalLayer        The temporal layer.
     /// 
@@ -767,11 +805,45 @@ typedef enum RPS_CLEAR_FLAGS
     RPS_CLEAR_UAV_UINT = 1 << 4,                                    ///< Clear the target as uint UAV.
 } RPS_CLEAR_FLAGS;
 
-/// Built-in node for clearing a texture view
-compute node clear_texture( texture t, RPS_CLEAR_FLAGS option, uint4 data );
+/// Built-in node for clearing a color texture by regions.
+///
+/// @param t                            View to the target texture to clear.
+/// @param data                         The clear color value.
+/// @param numRects                     The number of subregion rectangles.
+/// @param rects                        An array of subregion rectangles.
+graphics node clear_color_regions( [readwrite(rendertarget, clear)] texture t, float4 data : SV_ClearColor, uint numRects, int4 rects[] );
 
-/// Built-in node for clearing a buffer view
-compute node clear_buffer( buffer b, RPS_CLEAR_FLAGS option, uint4 data );
+/// Built-in node for clearing a depth-stencil texture by regions.
+///
+/// @param t                            View to the target texture to clear.
+/// @param option                       Flags indicating which aspects to clear. Must be a bit wise combination of RPS_CLEAR_DEPTH and RPS_CLEAR_STENCIL.
+/// @param d                            The depth value to clear to. Ignored if option flags doesn't contain RPS_CLEAR_DEPTH.
+/// @param s                            The stencil value to clear to. Ignored if option flags doesn't contain RPS_CLEAR_STENCIL.
+/// @param numRects                     The number of subregion rectangles.
+/// @param rects                        An array of subregion rectangles.
+graphics node clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] texture t, RPS_CLEAR_FLAGS option, float d : SV_ClearDepth, uint s : SV_ClearStencil, uint numRects, int4 rects[] );
+
+/// Built-in node for clearing a texture by regions.
+///
+/// @param t                            View to the target texture to clear.
+/// @param data                         The clear value. If the texture view has a floating point format, this is the bit representation of the floating point clear values.
+/// @param numRects                     The number of subregion rectangles.
+/// @param rects                        An array of subregion rectangles.
+compute node clear_texture_regions( [readwrite(clear)] texture t, uint4 data : SV_ClearColor, uint numRects, int4 rects[] );
+
+/// Built-in node for clearing a texture.
+///
+/// @param t                            View to the target texture to clear.
+/// @param option                       Flags specifying the clear behavior.
+/// @param data                         The clear value. If the texture view has a floating point format, this is the bit representation of the floating point clear values.
+compute node clear_texture( [writeonly(clear)] texture t, RPS_CLEAR_FLAGS option, uint4 data );
+
+/// Built-in node for clearing a buffer view.
+///
+/// @param b                            View to the target buffer to clear.
+/// @param option                       Flags specifying the clear behavior.
+/// @param data                         The clear value. If the buffer view has a floating point format, this is the bit representation of the floating point clear values.
+compute node clear_buffer( [writeonly(clear)] buffer b, RPS_CLEAR_FLAGS option, uint4 data );
 
 /// Built-in node for copying between two texture views.
 ///
@@ -780,7 +852,7 @@ compute node clear_buffer( buffer b, RPS_CLEAR_FLAGS option, uint4 data );
 /// @param src                              ///< The source texture view.
 /// @param srcOffset                        ///< The upper left front corner of the source region to copy from.
 /// @param extent                           ///< The extent of the copy region.
-copy node copy_texture( [writeonly(copy)] texture dst, uint3 dstOffset, [readonly(copy)] texture src, uint3 srcOffset, uint3 extent );
+copy node copy_texture( [readwrite(copy)] texture dst, uint3 dstOffset, [readonly(copy)] texture src, uint3 srcOffset, uint3 extent );
 
 /// Built-in node for copying between two buffer views.
 ///
@@ -789,7 +861,7 @@ copy node copy_texture( [writeonly(copy)] texture dst, uint3 dstOffset, [readonl
 /// @param src                              ///< The source buffer view.
 /// @param srcOffset                        ///< The byte offset of the source.
 /// @param size                             ///< The size in bytes of the copy region.
-copy node copy_buffer( [writeonly(copy)] buffer dst, uint64_t dstOffset, [readonly(copy)] buffer src, uint64_t srcOffset, uint64_t size );
+copy node copy_buffer( [readwrite(copy)] buffer dst, uint64_t dstOffset, [readonly(copy)] buffer src, uint64_t srcOffset, uint64_t size );
 
 /// Built-in node for copying data from a texture view to a buffer view.
 ///
@@ -801,7 +873,7 @@ copy node copy_buffer( [writeonly(copy)] buffer dst, uint64_t dstOffset, [readon
 /// @param src                              ///< The source texture view.
 /// @param srcOffset                        ///< The texel offset of the source.
 /// @param extent                           ///< The extent in texels of the copy region.
-copy node copy_texture_to_buffer( [writeonly(copy)] buffer dst, uint64_t dstByteOffset, uint rowPitch, uint3 bufferImageSize, uint3 dstOffset, [readonly(copy)] texture src, uint3 srcOffset, uint3 extent );
+copy node copy_texture_to_buffer( [readwrite(copy)] buffer dst, uint64_t dstByteOffset, uint rowPitch, uint3 bufferImageSize, uint3 dstOffset, [readonly(copy)] texture src, uint3 srcOffset, uint3 extent );
 
 /// Built-in node for copying data from a buffer view to a texture view.
 ///
@@ -813,7 +885,7 @@ copy node copy_texture_to_buffer( [writeonly(copy)] buffer dst, uint64_t dstByte
 /// @param bufferImageSize                  ///< The dimension of the source buffer image in texels.
 /// @param srcOffset                        ///< The texel offset of the source region.
 /// @param extent                           ///< The extent in texels of the copy region.
-copy node copy_buffer_to_texture( [writeonly(copy)] texture dst, uint3 dstOffset, [readonly(copy)] buffer src, uint64_t srcByteOffset, uint rowPitch, uint3 bufferImageSize, uint3 srcOffset, uint3 extent );
+copy node copy_buffer_to_texture( [readwrite(copy)] texture dst, uint3 dstOffset, [readonly(copy)] buffer src, uint64_t srcByteOffset, uint rowPitch, uint3 bufferImageSize, uint3 srcOffset, uint3 extent );
 
 /// Flags used to define a built-in resolve node operation.
 typedef enum RPS_RESOLVE_MODE
@@ -833,62 +905,62 @@ typedef enum RPS_RESOLVE_MODE
 /// @param srcOffset                        ///< The upper left front corner of the source region to copy from.
 /// @param extent                           ///< The extent of the copy region.
 /// @param resolveMode                      ///< The mode of the resolve.
-graphics node resolve( [writeonly(resolve)] texture dst, uint2 dstOffset, [readonly(resolve)] texture src, uint2 srcOffset, uint2 extent, RPS_RESOLVE_MODE resolveMode );
+graphics node resolve( [readwrite(resolve)] texture dst, uint2 dstOffset, [readonly(resolve)] texture src, uint2 srcOffset, uint2 extent, RPS_RESOLVE_MODE resolveMode );
 
 /// Built-in node to clear a texture.
 ///
 /// @param dst                          ///< The texture view to clear.
 /// @param clearValue                   ///< A <i><c>float4</c></i> expressing the clear value.
-node clear( texture dst, float4 clearValue );
+node clear( [writeonly(rendertarget, clear)] texture dst, float4 clearValue );
 
 /// Built-in node to clear a texture with uint values.
 ///
 /// @param dst                          ///< The texture view to clear.
 /// @param clearValue                   ///< A <i><c>uint4</c></i> expressing the clear value.
-node clear( texture dst, uint4 clearValue );
+node clear( [writeonly(rendertarget, clear)] texture dst, uint4 clearValue );
 
 /// Built-in node to clear a depth stencil view.
 ///
 /// @param dst                          ///< The depth / stencil texture view to clear.
 /// @param depth                        ///< The depth value to clear to.
 /// @param stencil                      ///< The stencil value to clear to.
-node clear( texture dst, float depth, uint stencil );
+node clear( [writeonly(depth, stencil, clear)] texture dst, float depth, uint stencil );
 
 /// Built-in node to clear a depth view.
 ///
 /// @param dst                          ///< The depth texture view to clear.
 /// @param depth                        ///< The depth value to clear to.
-node clear_depth( texture dst, float depth );
+node clear_depth( [writeonly(depth, clear)] texture dst, float depth );
 
 /// Built-in node to clear a stencil view.
 ///
 /// @param dst                          ///< The stencil texture view to clear.
 /// @param stencil                      ///< The stencil value to clear to.
-node clear_stencil( texture dst, uint stencil );
+node clear_stencil( [writeonly(stencil, clear)] texture dst, uint stencil );
 
 /// Built-in node to clear a buffer UAV with float values.
 ///
 /// @param dst                          ///< The texture view to clear.
 /// @param val                          ///< The value to clear to.
-node clear( buffer dst, float4 val );
+node clear( [readwrite(clear)] buffer dst, float4 val );
 
 /// Built-in node to clear a buffer UAV with uint values.
 ///
 /// @param dst                          ///< The texture view to clear.
 /// @param val                          ///< The value to clear to.
-node clear( buffer dst, uint4 val );
+node clear( [readwrite(clear)] buffer dst, uint4 val );
 
 /// Built-in node to copy between two texture views with identical properties.
 ///
 /// @param dst                          ///< The destination texture view.
 /// @param src                          ///< The source texture view.
-node copy_texture( texture dst, texture src );
+node copy_texture( [writeonly(copy)] texture dst, [readonly(copy)] texture src );
 
 /// Built-in node to copy between two buffer views with identical properties.
 ///
 /// @param dst                          ///< The destination buffer view.
 /// @param src                          ///< The source buffer view.
-node copy_buffer( buffer dst, buffer src );
+node copy_buffer( [readwrite(copy)] buffer dst, [readonly(copy)] buffer src );
 
 /// A structure encapsulating 6 floats describing a viewport.
 /// Explicitly specifies viewports in a graphics node.
@@ -896,12 +968,12 @@ node copy_buffer( buffer dst, buffer src );
 /// Example usage: `graphics node Foo( rtv myRT, RpsViewport vp : SV_Viewport0 );`
 typedef struct RpsViewport
 {
-    float x;                ///< The left position of the viewport
-    float y;                ///< The top position of the viewport
-    float width;            ///< The width of the viewport
-    float height;           ///< The width of the viewport
-    float minZ;             ///< The min Z value of the viewport
-    float maxZ;             ///< The max Z value of the viewport
+    float x;                ///< The left position of the viewport.
+    float y;                ///< The top position of the viewport.
+    float width;            ///< The width of the viewport.
+    float height;           ///< The height of the viewport.
+    float minZ;             ///< The min Z value of the viewport.
+    float maxZ;             ///< The max Z value of the viewport.
 } RpsViewport;
 
 /// A helper function to construct a RpsViewport.

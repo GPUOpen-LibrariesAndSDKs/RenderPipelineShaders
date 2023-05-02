@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_RHI_D3D11_H_
-#define _RPS_RHI_D3D11_H_
+#ifndef RPS_D3D11_RUNTIME_H
+#define RPS_D3D11_RUNTIME_H
 
 #include "rps/core/rps_api.h"
 #include "rps/runtime/common/rps_runtime.h"
@@ -344,4 +344,4 @@ namespace rps
 
 #endif  //__cplusplus
 
-#endif  //_RPS_RHI_D3D11_H_
+#endif  //RPS_D3D11_RUNTIME_H

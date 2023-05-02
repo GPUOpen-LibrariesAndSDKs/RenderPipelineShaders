@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_RUNTIME_CALLBACKS_H
 #define RPS_RUNTIME_CALLBACKS_H
@@ -47,21 +47,21 @@ typedef struct RpsRuntimeOpCreateResourceArgs
 {
     RpsResourceId           resourceId;         ///< ID of the resource declaration.
     RpsResourceDesc         desc;               ///< Resource description.
-    RpsVariable             originalDesc;       ///< Umodified resource description as originally defined by the user.
+    RpsVariable             originalDesc;       ///< Unmodified resource description as originally defined by the user.
     RpsClearValue           clearValue;         ///< Default value for clearing the resource.
-    RpsGpuMemoryRequirement allocRequirement;   ///< Allocation requirements.
+    RpsGpuMemoryRequirement allocRequirement;   ///< GPU memory allocation requirements.
     RpsHeapPlacement        allocPlacement;     ///< Allocation placement parameters.
     RpsAccessAttr           allAccesses;        ///< Combined accesses of the resource.
     RpsAccessAttr           initialAccess;      ///< Inital access of the resource in a frame.
     uint32_t                numMutableFormats;  ///< Number of mutable formats the resource can be used with.
-    RpsFormat*              mutableFormats;  ///< Pointer to an array of <c><i>RpsFormat</i></c> with numMutableFormats
-                                             ///  formats the resource can be used with. Must not be NULL if
-                                             ///  numMutableFormats != 0.
-    RpsBool bBufferFormattedWrite;           ///< Indicator for a formatted texel buffer (maps to
-                                             ///  VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT).
-    RpsBool bBufferFormattedRead;            ///< Indicator for a formatted texel buffer (maps to
-                                             ///  VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
-    RpsRuntimeResource* phRuntimeResource;   ///< Pointer to a handle to the runtime resource to be returned.
+    RpsFormat*              mutableFormats;     ///< Pointer to an array of <c><i>RpsFormat</i></c> with
+                                                ///  numMutableFormats formats the resource can be used with. Must not
+                                                ///  be NULL if numMutableFormats != 0.
+    RpsBool bBufferFormattedWrite;              ///< Indicator for a formatted texel buffer (maps to
+                                                ///  VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT).
+    RpsBool bBufferFormattedRead;               ///< Indicator for a formatted texel buffer (maps to
+                                                ///  VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+    RpsRuntimeResource* phRuntimeResource;      ///< Pointer to a handle to the runtime resource to be returned.
 } RpsRuntimeOpCreateResourceArgs;
 
 /// @brief Parameters for destroying an array of runtime resources.
@@ -80,10 +80,10 @@ typedef struct RpsRuntimeOpDestroyResourceArgs
 typedef struct RpsRuntimeOpCreateNodeUserResourcesArgs
 {
     void*        pUserContext;  ///< User defined context to pass to the node.
-    void* const* ppArgs;  ///< Pointer to an array of <c><i>void*</i></c> with numArgs arguments to be passed to the
-                          ///  node.
-    uint32_t numArgs;     ///< Number of arguments of the node.
-    uint32_t nodeTag;     ///< User defined node tag to be used for node associations.
+    void* const* ppArgs;        ///< Pointer to an array of <c><i>void*</i></c> with numArgs arguments to be passed to
+                                ///  the node.
+    uint32_t numArgs;           ///< Number of arguments of the node.
+    uint32_t nodeTag;           ///< User defined node tag to be used for node associations.
 } RpsRuntimeOpCreateNodeUserResourcesArgs;
 
 /// @brief Debug marker modes.
@@ -112,7 +112,7 @@ typedef RpsFlags32 RpsRuntimeRenderPassFlags;
 /// @brief Parameters for recording a debug marker command.
 typedef struct RpsRuntimeOpRecordDebugMarkerArgs
 {
-    RpsRuntimeCommandBuffer hCommandBuffer;  ///< Handle to the runtime commmand buffer to record the command for.
+    RpsRuntimeCommandBuffer hCommandBuffer;  ///< Handle to the runtime command buffer to record the command for.
                                              ///  Must not be RPS_NULL_HANDLE.
     void* pUserRecordContext;                ///< User context passed as RpsRenderGraphRecordCommandInfo::pUserContext.
     RpsRuntimeDebugMarkerMode mode;          ///< Marker mode.

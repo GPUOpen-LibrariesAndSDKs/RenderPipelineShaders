@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_RESOURCE_LIFETIME_CANVAS_HPP
 #define RPS_RESOURCE_LIFETIME_CANVAS_HPP
@@ -44,8 +44,8 @@ namespace rps
         struct ResourceTableRowInfo
         {
             uint32_t                resourceIndex;
-            ResourceInspectionLevel inspectionLevel : 2;
             uint32_t                childIndex : 30;
+            ResourceInspectionLevel inspectionLevel : 2;
             SubresourceRangePacked  subResRange;
 
             bool operator==(const ResourceTableRowInfo& other) const
@@ -139,6 +139,11 @@ namespace rps
         void DrawResourceTable(DrawingState& state);
         void DrawResourceTableRow(DrawingState& state, const ResourceTableRowInfo& rowInfo);
         void DrawResourceTimelines(DrawingState& state);
+
+        void DrawAccessDiscardMarkers(const DrawingState&  state,
+                                      ImDrawList*          pDrawList,
+                                      const UIRect&        accessRect,
+                                      const AccessVisInfo& accessInfo);
 
         void DrawToolTip(DrawingState& state, const ToolTipInfo& toolTipInfo) const;
 

@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_BUILDER_HPP_
-#define _RPS_BUILDER_HPP_
+#ifndef RPS_BUILDER_H
+#define RPS_BUILDER_H
 
 #include "rps/runtime/common/rps_runtime.h"
 
@@ -417,4 +417,4 @@ static inline void* rpsRenderGraphAllocAndZero(RpsRenderGraphBuilder hRenderGrap
 
 /// @} end addtogroup Frontend
 
-#endif  //_RPS_BUILDER_HPP_
+#endif  //RPS_BUILDER_H

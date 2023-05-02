@@ -1,0 +1,33 @@
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.txt for full license details.
+
+graphics node GeometryPass(rtv renderTarget
+                           : SV_Target0, float oneOverAspectRatio, float timeInSeconds, RpsViewport viewport
+                           : SV_Viewport);
+
+export void main([readonly(present)] texture backbuffer, float timeInSeconds)
+{
+    // clear and then render geometry to back buffer
+    clear(backbuffer, float4(0.0, 0.0, 0.0, 0.0));
+    ResourceDesc texDesc = backbuffer.desc();
+
+    float oneOverAspectRatio = (texDesc.Width) ? (float(texDesc.Height) / texDesc.Width) : 1.0;
+
+    uint32_t numPasses = 10;
+    uint32_t triStride = floor(sqrt(numPasses));
+
+    for (uint32_t i = 0; i < numPasses; i++)
+    {
+        float       sX = texDesc.Width / float(triStride);
+        float       sY = texDesc.Height / float(triStride);
+        float       x  = (i % triStride) * sX;
+        float       y  = (i / triStride) * sY;
+        RpsViewport v  = viewport(x, y, sX, sY);
+
+        GeometryPass(backbuffer, oneOverAspectRatio, timeInSeconds, v);
+    }
+}

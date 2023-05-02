@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_render_states.h"
 
@@ -33,10 +33,14 @@ namespace rps
     // copy     node copy_buffer_to_texture ( [writeonly(copy)] texture dst, uint3 dstOffset, [readonly(copy)] buffer src, uint64_t srcByteOffset, uint rowPitch, uint3 bufferImageSize, uint3 srcOffset, uint3 extent );
     // graphics node resolve                ( [writeonly(resolve)] texture dst, uint2 dstOffset, [readonly(resolve)] texture src, uint2 srcOffset, uint2 extent, RPS_RESOLVE_MODE resolveMode );
 
+    static constexpr bool NoRegions   = false;
+    static constexpr bool WithRegions = true;
+
     template <bool HasRegions>
     void VKBuiltInClearColorImpl(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         RPS_ASSERT(pContext->numArgs > 1);
 
@@ -63,22 +67,24 @@ namespace rps
         vkRange.baseArrayLayer          = pImageView->subresourceRange.baseArrayLayer;
         vkRange.layerCount              = pImageView->subresourceRange.arrayLayers;
 
-        vkCmdClearColorImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, pClearValue, 1, &vkRange);
+        RPS_VK_API_CALL(
+            vkCmdClearColorImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, pClearValue, 1, &vkRange));
     }
 
     void VKBuiltInClearColorRegions(const RpsCmdCallbackContext* pContext)
     {
-        VKBuiltInClearColorImpl<true>(pContext);
+        VKBuiltInClearColorImpl<WithRegions>(pContext);
     }
 
     void VKBuiltInClearColor(const RpsCmdCallbackContext* pContext)
     {
-        VKBuiltInClearColorImpl<false>(pContext);
+        VKBuiltInClearColorImpl<NoRegions>(pContext);
     }
 
     void VKBuiltInClearDepthStencil(const RpsCmdCallbackContext* pContext)
     {
-        VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
+        VkCommandBuffer hCmdBuf        = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         RPS_ASSERT(pContext->numArgs > 1);
 
@@ -105,7 +111,8 @@ namespace rps
         vkRange.baseArrayLayer          = pImageView->subresourceRange.baseArrayLayer;
         vkRange.layerCount              = pImageView->subresourceRange.arrayLayers;
 
-        vkCmdClearDepthStencilImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &vkRange);
+        RPS_VK_API_CALL(
+            vkCmdClearDepthStencilImage(hCmdBuf, hImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearValue, 1, &vkRange));
     }
 
     void VKBuiltInClearDepthStencilRegions(const RpsCmdCallbackContext* pContext)
@@ -128,10 +135,7 @@ namespace rps
     void VKBuiltInCopyTexture(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
-
-        auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
-
-        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         RPS_ASSERT(pContext->numArgs == 5);
 
@@ -225,20 +229,19 @@ namespace rps
         const VkImage hDstResource = rpsVKImageFromHandle(pDstResource->hRuntimeResource);
         const VkImage hSrcResource = rpsVKImageFromHandle(pSrcResource->hRuntimeResource);
 
-        vkCmdCopyImage(hCmdBuf,
-                       hSrcResource,
-                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       hDstResource,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                       numMipLevels,
-                       copyInfos);
+        RPS_VK_API_CALL(vkCmdCopyImage(hCmdBuf,
+                                       hSrcResource,
+                                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                       hDstResource,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                       numMipLevels,
+                                       copyInfos));
     }
 
     void VKBuiltInCopyBuffer(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
-
-        auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         const ResourceInstance *pDstResource, *pSrcResource;
         RPS_V_REPORT_AND_RETURN(pContext,
@@ -263,7 +266,7 @@ namespace rps
         copyInfo.dstOffset = dstOffset;
         copyInfo.size      = (copySize != UINT64_MAX) ? copySize : srcTotalSize;
 
-        vkCmdCopyBuffer(hCmdBuf, srcBuffer, dstBuffer, 1, &copyInfo);
+        RPS_VK_API_CALL(vkCmdCopyBuffer(hCmdBuf, srcBuffer, dstBuffer, 1, &copyInfo));
     }
 
     static constexpr bool TextureToBuffer = true;
@@ -281,9 +284,7 @@ namespace rps
     void VKBuiltInCopyTextureBufferCommon(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
-
-        auto* pBackend       = rps::VKRuntimeBackend::Get(pContext);
-        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         const ResourceInstance *pTextureResource, *pBufferResource;
         RPS_V_REPORT_AND_RETURN(
@@ -337,11 +338,13 @@ namespace rps
 
         if (SourceIsTexture)
         {
-            vkCmdCopyImageToBuffer(hCmdBuf, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bufferHdl, 1, &copyInfos);
+            RPS_VK_API_CALL(vkCmdCopyImageToBuffer(
+                hCmdBuf, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, bufferHdl, 1, &copyInfos));
         }
         else
         {
-            vkCmdCopyBufferToImage(hCmdBuf, bufferHdl, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfos);
+            RPS_VK_API_CALL(vkCmdCopyBufferToImage(
+                hCmdBuf, bufferHdl, imageHdl, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfos));
         }
     }
 
@@ -397,10 +400,7 @@ namespace rps
     void VKBuiltInResolve(const RpsCmdCallbackContext* pContext)
     {
         VkCommandBuffer hCmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
-
-        auto* pBackend = rps::VKRuntimeBackend::Get(pContext);
-
-        auto* pRuntimeDevice = RuntimeDevice::Get<VKRuntimeDevice>(pBackend->GetRenderGraph().GetDevice());
+        RPS_USE_VK_FUNCTIONS(rps::VKRuntimeBackend::Get(pContext)->GetVkRuntimeDevice().GetVkFunctions());
 
         RPS_ASSERT(pContext->numArgs == 6);
 
@@ -484,12 +484,12 @@ namespace rps
         const VkImage hDstResource = rpsVKImageFromHandle(pDstResource->hRuntimeResource);
         const VkImage hSrcResource = rpsVKImageFromHandle(pSrcResource->hRuntimeResource);
 
-        vkCmdResolveImage(hCmdBuf,
-                          hSrcResource,
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                          hDstResource,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          mipLevelCount,
-                          resolveInfo);
+        RPS_VK_API_CALL(vkCmdResolveImage(hCmdBuf,
+                                          hSrcResource,
+                                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                          hDstResource,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                          mipLevelCount,
+                                          resolveInfo));
     }
 }  // namespace rps

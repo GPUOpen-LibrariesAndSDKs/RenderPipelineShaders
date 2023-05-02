@@ -1,16 +1,16 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define RPS_D3D12_RUNTIME 1
 
-#include "test_downsample_shared.h"
+#include "test_downsample_shared.hpp"
 
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_d3d12_renderer.h"
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_d3d12_renderer.hpp"
 
 using namespace DirectX;
 

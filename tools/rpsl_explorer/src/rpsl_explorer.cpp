@@ -1,25 +1,26 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#include "rpsl_explorer.h"
+#include "rpsl_explorer.hpp"
 
 #if RPS_D3D12_RUNTIME
-#include "rpsl_explorer_dx12_renderer.h"
+#include "rpsl_explorer_dx12_renderer.hpp"
 #endif
 
 #if RPS_VK_RUNTIME
-#include "rpsl_explorer_vk_renderer.h"
+#include "rpsl_explorer_vk_renderer.hpp"
 #endif
 
 #include "rps_imgui_helpers.hpp"
 
-rps::CmdArg<bool>  g_useDX12("dx12", false);
-rps::CmdArg<bool>  g_useVK("vk", false);
+rps::CmdArg<bool>  g_useDX12("dx12", false, {}, false);
+rps::CmdArg<bool>  g_useVK("vk", false, {}, false);
 rps::CmdArg<bool>  g_enableDiagDump("diag", false);
+rps::CmdArg<bool>  g_enableDebugNames("debugNames", true);
 rps::CmdArg<bool>  g_enableVisualizer("vis", true);
 rps::CmdArg<float> g_visScreenHeightFrac("visHeight", -1.f);
 
@@ -141,7 +142,13 @@ void RpslExplorer::UpdateRpsPipeline(uint64_t                         frameIndex
         if (g_enableDiagDump &&
             ((completedFrameIndex == RPS_GPU_COMPLETED_FRAME_INDEX_NONE) || (m_renderGraphUpdateCount < 1)))
         {
-            updateInfo.diagnosticFlags = RPS_DIAGNOSTIC_ENABLE_ALL;
+            updateInfo.diagnosticFlags |= RPS_DIAGNOSTIC_ENABLE_PRE_SCHEDULE_DUMP |
+                                          RPS_DIAGNOSTIC_ENABLE_POST_SCHEDULE_DUMP | RPS_DIAGNOSTIC_ENABLE_DAG_DUMP;
+        }
+
+        if (g_enableDebugNames)
+        {
+            updateInfo.diagnosticFlags |= RPS_DIAGNOSTIC_ENABLE_RUNTIME_DEBUG_NAMES;
         }
 
         RpsResult result         = RPS_OK;

@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_D3D12_ENHANCED_BARRIER_H
-#define RPS_D3D12_ENHANCED_BARRIER_H
+#ifndef RPS_D3D12_ENHANCED_BARRIER_HPP
+#define RPS_D3D12_ENHANCED_BARRIER_HPP
 
 #if RPS_D3D12_ENHANCED_BARRIER_SUPPORT
 
@@ -38,7 +38,7 @@ namespace rps
 
             auto& aliasingInfos     = context.renderGraph.GetResourceAliasingInfos();
             auto& resourceInstances = context.renderGraph.GetResourceInstances();
-            auto& transitions       = context.renderGraph.GetTransitions();
+            auto  transitions       = context.renderGraph.GetTransitions().crange_all();
 
             auto transitionRangeCmds = transitionRange.Get(context.renderGraph.GetRuntimeCmdInfos());
 
@@ -48,22 +48,6 @@ namespace rps
             currBatch.offsets[D3D12_BARRIER_TYPE_BUFFER]  = uint32_t(m_bufferBarriers.size());
 
             constexpr RpsAccessAttr noAccess = {RPS_ACCESS_UNKNOWN, RPS_SHADER_STAGE_NONE};
-
-            // At preamble, initialize the layout for pending, non-aliased resources.
-            // For aliased resources this is included in the cmd.aliasingInfos so skipping here.
-            if (transitionRangeCmds[0].cmdId == CMD_ID_PREAMBLE)
-            {
-                // Non-initialized
-                // TODO: Add pendingInit resource indices to a separated list.
-                for (auto& resInst : resourceInstances)
-                {
-                    if (resInst.isPendingInit && !resInst.isAliased)
-                    {
-                        const auto aliasDstAccessInfo = CalcD3D12AccessInfo(resInst.initialAccess);
-                        AppendBarrier(resInst, noAccess, resInst.initialAccess, true, resInst.fullSubresourceRange);
-                    }
-                }
-            }
 
             for (uint32_t idx = 0; idx < transitionRangeCmds.size(); idx++)
             {
@@ -88,9 +72,8 @@ namespace rps
                         // TODO: Early out / conservative sync if too many final accesses
                         for (auto& srcFinalAccess : srcFinalAccesses)
                         {
-                            auto& srcAccess = (srcFinalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                                  ? transitions[srcFinalAccess.prevTransition].access.access
-                                                  : srcResInfo.initialAccess;
+                            const auto srcAccess =
+                                RenderGraph::CalcPreviousAccess(srcFinalAccess.prevTransition, transitions, srcResInfo);
 
                             AppendBarrier(srcResInfo, srcAccess, noAccess, false, srcFinalAccess.range);
                         }
@@ -115,35 +98,35 @@ namespace rps
                     const auto& currTrans   = transitions[cmd.cmdId];
                     const auto& resInstance = resourceInstances[currTrans.access.resourceId];
 
-                    const auto& prevAccess = (currTrans.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                                 ? transitions[currTrans.prevTransition].access.access
-                                                 : resInstance.initialAccess;
+                    const auto prevAccess =
+                        RenderGraph::CalcPreviousAccess(currTrans.prevTransition, transitions, resInstance);
 
                     AppendBarrier(resInstance, prevAccess, currTrans.access.access, false, currTrans.access.range);
                 }
                 else if (cmd.cmdId == CMD_ID_POSTAMBLE)
                 {
-                    // At frame end, transit non-deactivated resource states to initial states
+                    // At frame end, transit non-aliased resource states to initial states
+                    // All aliased resources are expected to be deactivated above from cmd.aliasingInfos.
                     // TODO: Extract non-aliased resource list ahead of time.
                     for (uint32_t iRes = 0, numRes = uint32_t(resourceInstances.size()); iRes < numRes; iRes++)
                     {
                         auto& resInstance = resourceInstances[iRes];
 
-                        if (!resInstance.isAliased)
+                        if (!resInstance.isAliased && resInstance.hRuntimeResource &&
+                            (resInstance.initialAccess.accessFlags != RPS_ACCESS_UNKNOWN))
                         {
                             for (auto& finalAccess :
                                  resInstance.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
                             {
-                                if (finalAccess.prevTransition != RenderGraph::INVALID_TRANSITION)
-                                {
-                                    AppendBarrier(
-                                        resInstance,
-                                        transitions[finalAccess.prevTransition].access.access,
-                                        // TODO: For non-external resource, set no access/sync + initial layout?
-                                        resInstance.initialAccess,
-                                        false,
-                                        transitions[finalAccess.prevTransition].access.range);
-                                }
+                                const auto srcAccess = RenderGraph::CalcPreviousAccess(
+                                    finalAccess.prevTransition, transitions, resInstance);
+
+                                AppendBarrier(resInstance,
+                                              srcAccess,
+                                              // TODO: For non-external resource, set no access/sync + initial layout?
+                                              resInstance.initialAccess,
+                                              false,
+                                              transitions[finalAccess.prevTransition].access.range);
                             }
                         }
                     }
@@ -244,7 +227,7 @@ namespace rps
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_NONE),
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_ALL),
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_DRAW),
-                RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_INPUT_ASSEMBLER),
+                RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_INDEX_INPUT),
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_VERTEX_SHADING),
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_PIXEL_SHADING),
                 RPS_INIT_NAME_VALUE_PAIR_PREFIXED(D3D12_BARRIER_, SYNC_DEPTH_STENCIL),
@@ -345,6 +328,57 @@ namespace rps
             pD3DCmdList7->Barrier(numGroups, barrierGroups);
         }
 
+        virtual void RecordResolveBatch(ID3D12GraphicsCommandList*      pD3DCmdList,
+                                        ConstArrayRef<D3D12ResolveInfo> resolveInfos) override
+        {
+            ID3D12GraphicsCommandList7* pD3DCmdList7 = static_cast<ID3D12GraphicsCommandList7*>(pD3DCmdList);
+
+            const uint32_t numResolves = uint32_t(resolveInfos.size());
+
+            RPS_ASSERT(numResolves <= D3D12ResolveInfo::RESOLVE_BATCH_SIZE);
+
+            D3D12_TEXTURE_BARRIER barriers[D3D12ResolveInfo::RESOLVE_BATCH_SIZE];
+
+            D3D12_BARRIER_GROUP barrierGroup = {};
+            barrierGroup.Type                = D3D12_BARRIER_TYPE_TEXTURE;
+            barrierGroup.NumBarriers         = numResolves;
+            barrierGroup.pTextureBarriers    = barriers;
+
+            for (uint32_t i = 0; i < numResolves; i++)
+            {
+                auto& barrier        = barriers[i];
+                barrier.SyncBefore   = D3D12_BARRIER_SYNC_RENDER_TARGET;
+                barrier.SyncAfter    = D3D12_BARRIER_SYNC_RESOLVE;
+                barrier.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+                barrier.AccessAfter  = D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+                barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+                barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+                barrier.pResource    = resolveInfos[i].pSrc;
+                barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+                barrier.Subresources = {};
+                // TODO: Can use 1 barrier per resource with subresource range for EB path.
+                barrier.Subresources.IndexOrFirstMipLevel = resolveInfos[i].srcSubResource;
+            }
+
+            pD3DCmdList7->Barrier(1, &barrierGroup);
+
+            for (uint32_t i = 0; i < resolveInfos.size(); i++)
+            {
+                pD3DCmdList->ResolveSubresource(resolveInfos[i].pDst,
+                                                resolveInfos[i].dstSubResource,
+                                                resolveInfos[i].pSrc,
+                                                resolveInfos[i].srcSubResource,
+                                                resolveInfos[i].format);
+
+                auto& barrier = barriers[i];
+                std::swap(barrier.SyncBefore, barrier.SyncAfter);
+                std::swap(barrier.AccessBefore, barrier.AccessAfter);
+                std::swap(barrier.LayoutBefore, barrier.LayoutAfter);
+            }
+
+            pD3DCmdList7->Barrier(1, &barrierGroup);
+        }
+
     private:
         struct D3D12EnhancedBarrierAccessInfo
         {
@@ -391,13 +425,20 @@ namespace rps
                     D3D12_BARRIER_ACCESS_NO_ACCESS, D3D12_BARRIER_LAYOUT_UNDEFINED, D3D12_BARRIER_SYNC_NONE};
             }
 
-            const bool isWriteOnly = rpsAnyBitsSet(access.accessFlags, RPS_ACCESS_DISCARD_OLD_DATA_BIT);
-
             if (access.accessFlags & RPS_ACCESS_RENDER_TARGET_BIT)
             {
-                return D3D12EnhancedBarrierAccessInfo{D3D12_BARRIER_ACCESS_RENDER_TARGET,
-                                                      D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-                                                      D3D12_BARRIER_SYNC_RENDER_TARGET};
+                if (access.accessFlags & RPS_ACCESS_RESOLVE_DEST_BIT)
+                {
+                    return D3D12EnhancedBarrierAccessInfo{D3D12_BARRIER_ACCESS_RESOLVE_DEST,
+                                                          D3D12_BARRIER_LAYOUT_RESOLVE_DEST,
+                                                          D3D12_BARRIER_SYNC_RESOLVE};
+                }
+                else
+                {
+                    return D3D12EnhancedBarrierAccessInfo{D3D12_BARRIER_ACCESS_RENDER_TARGET,
+                                                          D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                                                          D3D12_BARRIER_SYNC_RENDER_TARGET};
+                }
             }
 
             if (access.accessFlags & RPS_ACCESS_DEPTH_STENCIL)
@@ -477,7 +518,7 @@ namespace rps
                 {RPS_ACCESS_RESOLVE_SRC_BIT,        D3D12_BARRIER_ACCESS_RESOLVE_SOURCE,      D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,      D3D12_BARRIER_SYNC_RESOLVE},
                 {RPS_ACCESS_SHADING_RATE_BIT,       D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE, D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING},
                 {RPS_ACCESS_INDIRECT_ARGS_BIT,      D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,   D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_EXECUTE_INDIRECT},
-                {RPS_ACCESS_INDEX_BUFFER_BIT,       D3D12_BARRIER_ACCESS_INDEX_BUFFER,        D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_INPUT_ASSEMBLER},
+                {RPS_ACCESS_INDEX_BUFFER_BIT,       D3D12_BARRIER_ACCESS_INDEX_BUFFER,        D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_INDEX_INPUT},
                 {RPS_ACCESS_VERTEX_BUFFER_BIT,      D3D12_BARRIER_ACCESS_VERTEX_BUFFER,       D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_VERTEX_SHADING},
                 {RPS_ACCESS_CONSTANT_BUFFER_BIT,    D3D12_BARRIER_ACCESS_CONSTANT_BUFFER,     D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_NONE},
                 {RPS_ACCESS_PRESENT_BIT,            D3D12_BARRIER_ACCESS_COMMON,              D3D12_BARRIER_LAYOUT_COMMON,              D3D12_BARRIER_SYNC_ALL}, //SyncBefore bits D3D12_BARRIER_SYNC_NONE are incompatible with AccessBefore bits D3D12_BARRIER_ACCESS_COMMON in texture barrier at group [0], index [2]. [ STATE_SETTING ERROR #1331: INCOMPATIBLE_BARRIER_VALUES]
@@ -529,13 +570,17 @@ namespace rps
 
         static bool ResourceMayNeedPlacedResourceInit(const ResourceInstance& resInfo)
         {
+            const bool bHasStencil = rpsFormatHasStencil(resInfo.desc.GetFormat());
+
+            // TODO: Make sure it's full resource clear.
             return (resInfo.isAliased || resInfo.isPendingInit) &&
                    rpsAnyBitsSet(
                        resInfo.allAccesses.accessFlags,
                        (RPS_ACCESS_RENDER_TARGET_BIT | RPS_ACCESS_DEPTH_STENCIL | RPS_ACCESS_UNORDERED_ACCESS_BIT)) &&
                    !rpsAnyBitsSet(resInfo.initialAccess.accessFlags, RPS_ACCESS_CLEAR_BIT) &&
                    !rpsAllBitsSet(resInfo.initialAccess.accessFlags,
-                                  RPS_ACCESS_COPY_DEST_BIT | RPS_ACCESS_DISCARD_OLD_DATA_BIT);
+                                  RPS_ACCESS_COPY_DEST_BIT | RPS_ACCESS_DISCARD_DATA_BEFORE_BIT |
+                                      (bHasStencil ? RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT : 0));
         }
 
         void AppendBarrier(const ResourceInstance&      resInfo,
@@ -632,4 +677,4 @@ namespace rps
 
 #endif  //RPS_D3D12_ENHANCED_BARRIER_SUPPORT
 
-#endif  //RPS_D3D12_ENHANCED_BARRIER_H
+#endif  //RPS_D3D12_ENHANCED_BARRIER_HPP

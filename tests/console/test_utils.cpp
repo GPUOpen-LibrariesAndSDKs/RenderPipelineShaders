@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
@@ -521,6 +521,92 @@ TEST_CASE("BitVector")
         for (size_t i = size3 - 14; i < bitVec.size(); i++)
         {
             REQUIRE(bitVec.GetBit(i) == false);
+        }
+
+        bitVec.Resize(133);
+        bitVec.Fill(false);
+
+        REQUIRE(true == bitVec.CompareRange(0, bitVec.size(), false));
+        REQUIRE(true == bitVec.CompareAndSetRange(0, bitVec.size(), false, true));
+        for (size_t i = 0; i < bitVec.size(); i++)
+        {
+            REQUIRE(bitVec.GetBit(i) == true);
+        }
+
+        REQUIRE(true == bitVec.CompareRange(0, bitVec.size(), true));
+        REQUIRE(true == bitVec.CompareAndSetRange(0, bitVec.size(), true, false));
+        for (size_t i = 0; i < bitVec.size(); i++)
+        {
+            REQUIRE(bitVec.GetBit(i) == false);
+        }
+
+        auto setAndCheckRange = [&](size_t begin, size_t end, bool refVal, bool setVal) {
+
+            rps::BitVector<> copy{&allocatorCb};
+            rps::BitVector<> copyForSetRange{&allocatorCb};
+
+            bitVec.Clone(copy);
+            bitVec.Clone(copyForSetRange);
+
+            bool bExpectedEq = true;
+
+            for (size_t i = 0; i < bitVec.size(); i++)
+            {
+                REQUIRE(bitVec.GetBit(i) == copy.GetBit(i));
+
+                if ((i >= begin) && (i < end))
+                {
+                    bExpectedEq &= (bitVec.GetBit(i) == refVal);
+                }
+            }
+
+            REQUIRE(bExpectedEq == bitVec.CompareRange(begin, end, refVal));
+            REQUIRE(bExpectedEq == bitVec.CompareAndSetRange(begin, end, refVal, setVal));
+            copyForSetRange.SetRange(begin, end, setVal);
+
+            for (size_t i = 0; i < begin; i++)
+            {
+                REQUIRE(bitVec.GetBit(i) == copy.GetBit(i));
+                REQUIRE(copyForSetRange.GetBit(i) == copy.GetBit(i));
+            }
+
+            for (size_t i = begin; i < end; i++)
+            {
+                REQUIRE(bitVec.GetBit(i) == setVal);
+                REQUIRE(copyForSetRange.GetBit(i) == setVal);
+            }
+
+            for (size_t i = end; i < bitVec.size(); i++)
+            {
+                REQUIRE(bitVec.GetBit(i) == copy.GetBit(i));
+                REQUIRE(copyForSetRange.GetBit(i) == copy.GetBit(i));
+            }
+        };
+
+        setAndCheckRange(13, 27, false, true);
+        setAndCheckRange(15, 20, true, false);
+        setAndCheckRange(18, 130, false, true);
+        setAndCheckRange(64, 128, true, false);
+        setAndCheckRange(129, bitVec.size(), false, true);
+        setAndCheckRange(19, 127, true, true);
+        setAndCheckRange(33, 85, false, false);
+        setAndCheckRange(22, 22, false, true);
+        setAndCheckRange(64, 64, true, false);
+        setAndCheckRange(14, 128, false, true);
+        setAndCheckRange(64, bitVec.size(), true, false);
+
+        for (uint32_t i = 0; i < 100; i++)
+        {
+            size_t begin = (size_t(rand()) % bitVec.size());
+            size_t end = (size_t(rand()) % (bitVec.size() + 1));
+            if (end < begin)
+            {
+                std::swap(begin, end);
+            }
+            bool refVal = !!(rand() & 1);
+            bool setVal = !!(rand() & 1);
+
+            setAndCheckRange(begin, end, refVal, setVal);
         }
 
     } while (false);

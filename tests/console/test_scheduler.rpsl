@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 node         draw(uint id, rtv rt : SV_Target0);
 compute node comp_draw(uint id, uav rt);
@@ -134,4 +134,109 @@ export void gfx_comp_batching(texture output)
     blt(9, output, t3);
     blt(10, output, t4);
     blt(11, output, t5);
+}
+
+node draw_mrt_wo_rt0(uint id, discard_rtv rt : SV_Target0, rtv rt1 : SV_Target1);
+node draw_with_ds_clear(uint id, rtv rt : SV_Target0, [readwrite(depth)][writeonly(stencil)] texture d : SV_DepthStencil, float clearDepth : SV_ClearDepth, uint clearStencil : SV_ClearStencil);
+node draw_with_ds_wo_stencil(uint id, rtv rt : SV_Target0, [readwrite(depth)][writeonly(stencil)] texture d : SV_DepthStencil);
+node draw_with_ds_wo_depth(uint id, rtv rt : SV_Target0, [writeonly(depth)][readwrite(stencil)] texture d : SV_DepthStencil);
+node draw_with_ds_wo_depthstencil(uint id, rtv rt : SV_Target0, [writeonly(depth, stencil)] texture d : SV_DepthStencil);
+node draw_with_ds_ro_depthstencil(uint id, rtv rt : SV_Target0, [readonly(depth, stencil)] texture d : SV_DepthStencil);
+node draw_with_depth_srv(uint id, rtv rt : SV_Target0, [readonly(ps)] texture d);
+node draw_with_stencil_srv(uint id, rtv rt : SV_Target0, [readonly(ps)] texture s);
+
+node draw_with_overlapped_views(uint                                   id,
+                                [readonly(cs)] texture                 t0,
+                                [writeonly(cs)] texture                u0,
+                                [readonly(cs, discard_before)] texture t1,
+                                [readonly(cs)] texture                 t2,
+                                [readonly(cs)] texture                 t3,
+                                [readonly(cs, discard_after)] texture  t4,
+                                [readonly(cs)] texture                 t5,
+                                [readonly(cs)] texture                 t6,
+                                [readonly(cs)] texture                 t7,
+                                [readonly(cs, discard_after)] texture  t8);
+
+node draw_with_overlapped_views2(uint                                  id,
+                                [readonly(cs, discard_after)] texture  t0,
+                                [readonly(cs, discard_before)] texture t1);                                
+
+export void subres_data_lifetime(texture output)
+{
+    ResourceDesc desc = output.desc();
+
+    uint mips_levels  = 5;
+    uint array_slices = 10;
+
+    texture t0 = create_tex2d(desc.Format, (uint)desc.Width, desc.Height, mips_levels, array_slices, 1);
+    texture t1 = create_tex2d(desc.Format, (uint)desc.Width, desc.Height, 1, 1, 3);
+    texture t2 = create_tex2d(desc.Format, (uint)desc.Width, desc.Height, 5, 1, 1);
+    texture d0 = create_tex2d(RPS_FORMAT_D32_FLOAT_S8X24_UINT, (uint)desc.Width, desc.Height, 1, 1, 1);
+
+    draw(0, t0.array(0).mips(0));
+    // array[1].mip[0] to be discarded
+    draw_mrt_wo_rt0(1, t0.array(1).mips(0), t0.array(0).mips(0));
+
+    draw(2, t0.array(2).mips(0));
+    // array[2].mip[0] to be discarded
+    draw_mrt_wo_rt0(3, t0.array(2).mips(0), t0.array(3).mips(0));
+
+    draw(4, t0.array(0, 4).mips(0));
+    // array[0, 1].mip[0] to be discarded
+    draw_mrt_wo_rt0(5, t0.array(0, 2).mips(0), t0.array(3).mips(0));
+
+    draw(6, t0.array(0, 3).mips(0));
+    // discard range not fully overlapping
+    draw_mrt_wo_rt0(7, t0.array(1, 3).mips(0), t0.array(5).mips(0));
+
+    draw(8, t1);
+    draw_with_ds_clear(9, t1, d0, 1.0f, 0);
+    draw_with_ds_wo_stencil(10, t1, d0);
+    draw_with_ds_wo_depth(11, t1, d0);
+    draw_with_depth_srv(12, t1, d0.format(RPS_FORMAT_R32_FLOAT_X8X24_TYPELESS));
+    draw_with_ds_wo_depthstencil(13, t1, d0);
+    draw_with_stencil_srv(14, t1, d0.format(RPS_FORMAT_X32_TYPELESS_G8X24_UINT));
+    draw_with_ds_ro_depthstencil(15, t1, d0);
+
+    blt(16, output, t0);
+    blt(17, output, t1);
+
+    draw(18, t2.mips(0)); // discard_before
+    draw(19, t2.mips(1)); // discard_before
+    draw(20, t2.mips(2)); // discard_before | discard_after (patched)
+    draw(21, t2.mips(3)); // discard_before
+
+    draw_with_overlapped_views(22,
+        t2.mips(0), // RO                 -> 0
+        t2.mips(2), // WO                 -> discard_before | discard_after (patched)
+        t2.mips(0), // RO(discard_before) -> discard_before
+        t2.mips(0), // RO                 -> 0
+        t2.mips(1), // RO                 -> discard_after (patched)
+        t2.mips(1), // RO(discard_after)  -> discard_after
+        t2.mips(1), // RO                 -> discard_after (patched)
+        t2.mips(3), // RO                 -> 0
+        t2.mips(3), // RO                 -> 0
+        t2.mips(4));// RO(discard_after)  -> discard_after | discard_before
+
+    draw_with_overlapped_views(23,
+        t2.mips(0), // RO                 -> 0
+        t2.mips(2), // WO                 -> discard_before
+        t2.mips(1), // RO(discard_before) -> discard_before
+        t2.mips(3), // RO                 -> discard_after (patched)
+        t2.mips(3), // RO                 -> discard_after (patched)
+        t2.mips(4), // RO(discard_after)  -> discard_after | discard_before(patched)
+        t2.mips(3), // RO                 -> discard_after (patched)
+        t2.mips(3), // RO                 -> discard_after (patched)
+        t2.mips(3), // RO                 -> discard_after (patched)
+        t2.mips(4));// RO(discard_after)  -> discard_after | discard_before(patched)
+
+    blt(24, output, t2.mips(1)); // 0
+    blt(25, output, t2.mips(2)); // 0
+    blt(26, output, t2.mips(4)); // discard_before | discard_after (patched)
+
+    draw_with_overlapped_views2(27, t2.mips(0, 3), t2.mips(2, 3)); // discard_after, discard_before.
+
+    blt(28, output, t2.mips(2)); // 0
+    blt(29, output, t2.mips(1)); // discard_before (patched)
+    blt(30, output, t2);         // discard_after
 }

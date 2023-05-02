@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define CATCH_CONFIG_MAIN
 
@@ -109,6 +109,7 @@ RpsResult buildRenderToTextureCpp(RpsRenderGraphBuilder hBuilder, const RpsConst
                 NODE_ID_MSAA_TRIANGLE,
                 nullptr,
                 nullptr,
+                RPS_CMD_CALLBACK_FLAG_NONE,
                 {&rttVars->msaaRTView, &rttVars->clearValue, &rttVars->bUseMSAA, &rttVars->offscreenRTView});
         }
         else
@@ -118,11 +119,17 @@ RpsResult buildRenderToTextureCpp(RpsRenderGraphBuilder hBuilder, const RpsConst
                                   NODE_ID_TRIANGLE,
                                   nullptr,
                                   nullptr,
+                                  RPS_CMD_CALLBACK_FLAG_NONE,
                                   {&rttVars->offscreenRTView, &rttVars->clearValue, &rttVars->bUseMSAA, nullptr});
         }
 
-        rpsRenderGraphAddNode(
-            hBuilder, bltQuad, NODE_BLT, nullptr, nullptr, {&rttVars->offscreenRTView, &rttVars->backBufferView});
+        rpsRenderGraphAddNode(hBuilder,
+                              bltQuad,
+                              NODE_BLT,
+                              nullptr,
+                              nullptr,
+                              RPS_CMD_CALLBACK_FLAG_NONE,
+                              {&rttVars->offscreenRTView, &rttVars->backBufferView});
     }
     else
     {
@@ -131,6 +138,7 @@ RpsResult buildRenderToTextureCpp(RpsRenderGraphBuilder hBuilder, const RpsConst
                               pPrivateUpdateInfo->bUseMSAA ? NODE_ID_MSAA_TRIANGLE : NODE_ID_TRIANGLE,
                               nullptr,
                               nullptr,
+                              RPS_CMD_CALLBACK_FLAG_NONE,
                               {&rttVars->backBufferView, &rttVars->clearValue, &rttVars->bUseMSAA, nullptr});
     }
 

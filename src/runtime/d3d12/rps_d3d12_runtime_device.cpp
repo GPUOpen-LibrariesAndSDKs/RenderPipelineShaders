@@ -1,20 +1,21 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/d3d_common/rps_d3d_common.h"
 
 #include "runtime/common/rps_runtime_util.hpp"
 #include "runtime/common/phases/rps_pre_process.hpp"
-#include "runtime/common/phases/rps_dag_build.h"
+#include "runtime/common/phases/rps_dag_build.hpp"
 #include "runtime/common/phases/rps_access_dag_build.hpp"
 #include "runtime/common/phases/rps_cmd_print.hpp"
 #include "runtime/common/phases/rps_cmd_dag_print.hpp"
 #include "runtime/common/phases/rps_dag_schedule.hpp"
 #include "runtime/common/phases/rps_schedule_print.hpp"
+#include "runtime/common/phases/rps_lifetime_analysis.hpp"
 #include "runtime/common/phases/rps_memory_schedule.hpp"
 
 #include "runtime/d3d12/rps_d3d12_runtime_device.hpp"
@@ -60,7 +61,10 @@ namespace rps
         }
 #endif  //RPS_D3D12_FEATURE_D3D12_OPTIONS12_DEFINED
 
-        m_heapTier     = featureOptionsData.ResourceHeapTier;
+        m_heapTier = rpsAnyBitsSet(m_flags, RPS_D3D12_RUNTIME_FLAG_FORCE_RESOURCE_HEAP_TIER1)
+                         ? D3D12_RESOURCE_HEAP_TIER_1
+                         : featureOptionsData.ResourceHeapTier;
+
         m_renderPassesTier = featureOptionsData5.RenderPassesTier;
 
         m_memoryTypeInfos[RPS_D3D12_HEAP_TYPE_INDEX_UPLOAD]   = {0, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT};
@@ -77,6 +81,8 @@ namespace rps
                 0, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT};
             m_memoryTypeInfos[RPS_D3D12_HEAP_TYPE_INDEX_DEFAULT_TIER_1_RT_DS_TEXTURE_MSAA] = {
                 0, D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT};
+            m_memoryTypeInfos[RPS_D3D12_HEAP_TYPE_INDEX_DEFAULT_TIER_1_BUFFER] = {
+                0, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT};
             m_memoryTypeInfos[RPS_D3D12_HEAP_TYPE_INDEX_DEFAULT_TIER_1_NON_RT_DS_TEXTURE] = {
                 0, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT};
         }
@@ -117,13 +123,17 @@ namespace rps
 
     RpsResult D3D12RuntimeDevice::BuildDefaultRenderGraphPhases(RenderGraph& renderGraph)
     {
-        RPS_V_RETURN(renderGraph.ReservePhases(8));
+        RPS_V_RETURN(renderGraph.ReservePhases(16));
         RPS_V_RETURN(renderGraph.AddPhase<PreProcessPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<CmdDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<DAGBuilderPass>());
         RPS_V_RETURN(renderGraph.AddPhase<AccessDAGBuilderPass>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGPrintPhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<DAGSchedulePass>(renderGraph));
+        if (!rpsAnyBitsSet(renderGraph.GetCreateInfo().renderGraphFlags, RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS))
+        {
+            RPS_V_RETURN(renderGraph.AddPhase<LifetimeAnalysisPhase>());
+        }
         RPS_V_RETURN(renderGraph.AddPhase<MemorySchedulePhase>(renderGraph));
         RPS_V_RETURN(renderGraph.AddPhase<ScheduleDebugPrintPhase>());
         RPS_V_RETURN(renderGraph.AddPhase<D3D12RuntimeBackend>(*this, renderGraph));

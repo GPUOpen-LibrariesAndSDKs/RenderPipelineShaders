@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/d3d11/rps_d3d11_runtime.h"
 #include "rps/runtime/common/rps_render_states.h"
@@ -195,7 +195,7 @@ namespace rps
             temporalSlice =
                 resInfo.isFirstTemporalSlice ? 0 : (resInfo.isTemporalSlice ? (temporalSlice + 1) : RPS_INDEX_NONE_U32);
 
-            if (resInfo.isPendingCreate)
+            if (resInfo.isPendingCreate && !resInfo.HasEmptyLifetime())
             {
                 if (resInfo.hRuntimeResource)
                 {
@@ -206,11 +206,11 @@ namespace rps
 
                 RPS_ASSERT(resInfo.allocPlacement.heapId == RPS_INDEX_NONE_U32);
 
-                ID3D11Resource* pD3DRes;
-                CreateD3D11ResourceDesc(pD3DDevice, resInfo, &pD3DRes);
+                ID3D11Resource* pD3DRes = nullptr;
+                RPS_V_RETURN(CreateD3D11ResourceDesc(pD3DDevice, resInfo, &pD3DRes));
 
                 resInfo.hRuntimeResource = rpsD3D11ResourceToHandle(pD3DRes);
-                resInfo.isPendingCreate  = false;
+                resInfo.FinalizeRuntimeResourceCreation();
 
                 if (bEnableDebugNames)
                 {
@@ -288,8 +288,10 @@ namespace rps
 
         auto pD3DDeviceContext = GetD3DDeviceContext(context);
 
-        const bool bBindRenderTargets = !rpsAnyBitsSet(cmd.callback.flags, RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT);
-        const bool bSetViewportScissors = !rpsAnyBitsSet(cmd.callback.flags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_BIT);
+        const auto cmdCbFlags = context.bIsCmdBeginEnd ? cmd.callback.flags : RPS_CMD_CALLBACK_FLAG_NONE;
+
+        const bool bBindRenderTargets   = !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT);
+        const bool bSetViewportScissors = !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_SCISSOR_BIT);
 
         // Need to skip clears if it's render pass resume
         const bool bIsRenderPassResuming = rpsAnyBitsSet(context.renderPassFlags, RPS_RUNTIME_RENDER_PASS_RESUMING);
@@ -378,7 +380,7 @@ namespace rps
                 auto& cmdRPInfo = *pCmdInfo->pRenderPassInfo;
 
                 RPS_STATIC_ASSERT(sizeof(D3D11_VIEWPORT) == sizeof(RpsViewport),
-                                  "RpsViewport / D3D12_VIEWPORT size mismatch");
+                                  "RpsViewport / D3D11_VIEWPORT size mismatch");
 
                 pD3DDeviceContext->RSSetViewports(
                     cmdRPInfo.viewportInfo.numViewports,
@@ -478,6 +480,8 @@ namespace rps
     RpsResult D3D11RuntimeBackend::RecordCmdFixedFunctionBindingsAndDynamicStates(
         const RuntimeCmdCallbackContext& context) const
     {
+        RPS_RETURN_OK_IF(rpsAnyBitsSet(context.pCmd->callback.flags, RPS_CMD_CALLBACK_CUSTOM_STATE_SETUP_BIT));
+
         const auto& nodeDeclInfo = *context.pCmdInfo->pNodeDecl;
 
         auto fixedFuncBindings = nodeDeclInfo.fixedFunctionBindings.Get(nodeDeclInfo.semanticKinds);

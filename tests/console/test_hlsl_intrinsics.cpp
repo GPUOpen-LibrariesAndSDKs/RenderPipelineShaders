@@ -1,13 +1,14 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 #include <stdarg.h>
+#include <math.h>
 
 #include "rps/rps.h"
 #include "utils/rps_test_common.h"
@@ -180,28 +181,21 @@ TEST_CASE("TestHLSLIntrinsics")
         REQUIRE(rpslResults.iaRps != nullptr);
         REQUIRE(rpslResults.faRps != nullptr);
 
-        for (uint32_t i = 0; i < _countof(ia); i++)
+        for (uint32_t i = 0; i < RPS_TEST_COUNTOF(ia); i++)
         {
-            if (ia[i] != rpslResults.iaRps[i])
-                DebugBreak();
             REQUIRE(ia[i] == rpslResults.iaRps[i]);
         }
 
-        for (uint32_t i = 0; i < _countof(fa); i++)
+        for (uint32_t i = 0; i < RPS_TEST_COUNTOF(fa); i++)
         {
             printf("%25.10f : %25.10f\n", fa[i], rpslResults.faRps[i]);
 
-            if (i < 2)
-            {
-                // FMod / Atan2 impl are slightly different between DXIL and emulation.
-                REQUIRE(fabs(fa[i] - rpslResults.faRps[i]) < 1E-5f);
-            }
-            else
-            {
-                REQUIRE(((isinf(fa[i]) && isinf(rpslResults.faRps[i])) ||
-                         (isnan(fa[i]) && isnan(rpslResults.faRps[i])) ||
-                         (fabs(fa[i] - rpslResults.faRps[i]) < FLT_EPSILON)));
-            }
+            // Atan2 impl is slightly different between DXIL and emulation.
+            const float errorTolerance = (i < 1) ? 1E-5f : FLT_EPSILON;
+
+            REQUIRE(((isinf(fa[i]) && isinf(rpslResults.faRps[i])) ||
+                     (isnan(fa[i]) && isnan(rpslResults.faRps[i])) ||
+                     (fabs(fa[i] - rpslResults.faRps[i]) < errorTolerance)));
         }
     }
 

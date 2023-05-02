@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_RENDER_GRAPH_SIGNATURE_HPP
 #define RPS_RENDER_GRAPH_SIGNATURE_HPP
@@ -687,7 +687,7 @@ namespace rps
                     else if ((currParam.semanticIndex + nodeDecl.params[currParam.paramIndex].GetNumElements()) >
                              sortedSemantics[i + 1].semanticIndex)
                     {
-                        RPS_DIAG("Semantic index range overlap");
+                        RPS_DIAG(RPS_DIAG_ERROR, "Semantic index range overlap");
                         return RPS_ERROR_INVALID_PROGRAM;
                     }
 

@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "core/rps_graph.hpp"
 #include "core/rps_device.hpp"
@@ -61,7 +61,7 @@ namespace rps
         m_edgeListPool.push_to_span(edgeList, newEdge);
     }
 
-    bool Graph::IsParentSubgraphOf(uint32_t parentSubgraphId, uint32_t childSubgraphId) const
+    bool Graph::IsParentSubgraph(uint32_t parentSubgraphId, uint32_t childSubgraphId) const
     {
         if ((parentSubgraphId == RPS_INDEX_NONE_U32) || (childSubgraphId == RPS_INDEX_NONE_U32))
         {
@@ -70,7 +70,7 @@ namespace rps
 
         uint32_t currIdx = childSubgraphId;
 
-        while (parentSubgraphId < currIdx)
+        while ((parentSubgraphId < currIdx) && (currIdx != RPS_INDEX_NONE_U32))
         {
             currIdx = m_subgraphs[currIdx].parentSubgraph;
         }

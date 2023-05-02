@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "runtime/common/rps_rpsl_host.hpp"
 #include "runtime/common/rps_subprogram.hpp"
@@ -162,7 +162,7 @@ namespace rps
         pResDesc->temporalLayers = temporalLayers;
         pResDesc->flags          = flags;
 
-        if (type != RPS_RESOURCE_TYPE_BUFFER)
+        if (ResourceDesc::IsImage(pResDesc->type))
         {
             pResDesc->image.width       = width;
             pResDesc->image.height      = height;
@@ -173,7 +173,7 @@ namespace rps
 
             RPS_ASSERT((sampleQuality == 0) && "TODO!");
         }
-        else
+        else if (ResourceDesc::IsBuffer(pResDesc->type))
         {
             pResDesc->buffer.sizeInBytesLo = width;
             pResDesc->buffer.sizeInBytesHi = height;

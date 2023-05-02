@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_access.h"
 #include "core/rps_util.hpp"
@@ -43,11 +43,14 @@ namespace rps
             {RPS_ACCESS_CPU_WRITE_BIT, "cpu_write"},
 
             // Special flags
-            {RPS_ACCESS_RENDER_PASS, "render_pass"},
+            {RPS_ACCESS_DISCARD_DATA_BEFORE_BIT, "discard_before"},
+            {RPS_ACCESS_DISCARD_DATA_AFTER_BIT, "discard_after"},
+            {RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT, "stencil_discard_before"},
+            {RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT, "stencil_discard_after"},
             {RPS_ACCESS_BEFORE_BIT, "before"},
             {RPS_ACCESS_AFTER_BIT, "after"},
             {RPS_ACCESS_CLEAR_BIT, "clear"},
-            {RPS_ACCESS_DISCARD_OLD_DATA_BIT, "discard"},
+            {RPS_ACCESS_RENDER_PASS, "render_pass"},
             {RPS_ACCESS_RELAXED_ORDER_BIT, "relaxed"},
             {RPS_ACCESS_NO_VIEW_BIT, "no_view"},
         };
@@ -143,7 +146,7 @@ namespace rps
             "DomainShader",             //RPS_SEMANTIC_DOMAIN_SHADER,
             "RaytracingPipeline",       //RPS_SEMANTIC_RAYTRACING_PIPELINE,
             "AmplificationShader",      //RPS_SEMANTIC_AMPLIFICATION_SHADER,
-            "MeshShader",               //RPS_SEMANTIC_MESHS_HADER,
+            "MeshShader",               //RPS_SEMANTIC_MESH_SHADER,
 
             "VertexLayout",             //RPS_SEMANTIC_VERTEX_LAYOUT,
             "StreamOutLayout",          //RPS_SEMANTIC_STREAM_OUT_LAYOUT,

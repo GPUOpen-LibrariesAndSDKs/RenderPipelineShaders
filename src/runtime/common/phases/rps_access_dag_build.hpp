@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_CMD_DAG_BUILD_HPP_
-#define _RPS_CMD_DAG_BUILD_HPP_
+#ifndef RPS_ACCESS_DAG_BUILD_HPP
+#define RPS_ACCESS_DAG_BUILD_HPP
 
 #include "runtime/common/rps_render_graph.hpp"
 
@@ -95,7 +95,8 @@ namespace rps
                              resState.access.accessorNodes.empty()))
                         {
                             RPS_ASSERT((isSingleSubresource && subResStates.empty()) || (subResStates.size() == 1));
-                            resInfo.initialAccess = currAccess.access;
+
+                            resInfo.SetInitialAccess(currAccess.access);
                         }
 
                         // Buffers and single-subresource images: simple path
@@ -189,7 +190,7 @@ namespace rps
             {
                 ResourceInstance& resInfo = resourceInsts[iRes];
 
-                if (resInfo.IsTemporalParent())
+                if (!resInfo.IsActive() || resInfo.IsTemporalParent())
                     continue;
 
                 if (resInfo.numSubResources > 1)
@@ -524,4 +525,4 @@ namespace rps
     };
 }
 
-#endif  //_RPS_CMD_DAG_BUILD_HPP_
+#endif  //RPS_ACCESS_DAG_BUILD_HPP

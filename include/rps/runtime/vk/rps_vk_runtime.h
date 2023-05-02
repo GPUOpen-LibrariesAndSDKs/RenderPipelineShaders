@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #ifndef RPS_VK_RUNTIME_H
 #define RPS_VK_RUNTIME_H
@@ -24,10 +24,62 @@ typedef enum RpsVKRuntimeFlagBits
     RPS_VK_RUNTIME_FLAG_DONT_FLIP_VIEWPORT = 1 << 2,  ///< Disables viewport flipping. By default RPS flips the viewport
                                                       ///  when the automatic viewport setup is enabled for a command
                                                       ///  node to match the D3D12 backend behavior.
+
+    RPS_VK_RUNTIME_FLAG_STORE_OP_NONE_SUPPORTED = 1 << 3, ///< The runtime supports VK_ATTACHMENT_STORE_OP_NONE*.
 } RpsVKRuntimeFlagBits;
 
 /// @brief Bitmask type for <c><i>RpsVKRuntimeFlagBits</i></c>
 typedef uint32_t RpsVKRuntimeFlags;
+
+/// @brief Macro for enumerating all API functions used in the runtime backend.
+/// 
+/// For usage, TABLE_ENTRY needs to define the structure of a single element of the iteration before
+/// using RPS_VK_FUNCTION_TABLE. For example usage see the definition of RpsVKFunctions. Its members can be set at 
+/// runtime creation easily this way as well.
+#define RPS_VK_FUNCTION_TABLE(TABLE_ENTRY) \
+    TABLE_ENTRY(vkGetPhysicalDeviceProperties) \
+    TABLE_ENTRY(vkGetPhysicalDeviceMemoryProperties) \
+    TABLE_ENTRY(vkCreateImage) \
+    TABLE_ENTRY(vkDestroyImage) \
+    TABLE_ENTRY(vkBindImageMemory) \
+    TABLE_ENTRY(vkGetImageMemoryRequirements) \
+    TABLE_ENTRY(vkCreateBuffer) \
+    TABLE_ENTRY(vkDestroyBuffer) \
+    TABLE_ENTRY(vkBindBufferMemory) \
+    TABLE_ENTRY(vkGetBufferMemoryRequirements) \
+    TABLE_ENTRY(vkCreateFramebuffer) \
+    TABLE_ENTRY(vkDestroyFramebuffer) \
+    TABLE_ENTRY(vkCreateRenderPass) \
+    TABLE_ENTRY(vkDestroyRenderPass) \
+    TABLE_ENTRY(vkCreateBufferView) \
+    TABLE_ENTRY(vkDestroyBufferView) \
+    TABLE_ENTRY(vkCreateImageView) \
+    TABLE_ENTRY(vkDestroyImageView) \
+    TABLE_ENTRY(vkAllocateMemory) \
+    TABLE_ENTRY(vkFreeMemory) \
+    TABLE_ENTRY(vkCmdBeginRenderPass) \
+    TABLE_ENTRY(vkCmdEndRenderPass) \
+    TABLE_ENTRY(vkCmdSetViewport) \
+    TABLE_ENTRY(vkCmdSetScissor) \
+    TABLE_ENTRY(vkCmdPipelineBarrier) \
+    TABLE_ENTRY(vkCmdClearColorImage) \
+    TABLE_ENTRY(vkCmdClearDepthStencilImage) \
+    TABLE_ENTRY(vkCmdCopyImage) \
+    TABLE_ENTRY(vkCmdCopyBuffer) \
+    TABLE_ENTRY(vkCmdCopyImageToBuffer) \
+    TABLE_ENTRY(vkCmdCopyBufferToImage) \
+    TABLE_ENTRY(vkCmdResolveImage)
+
+// Macro for declaring a dispatch table entry from their call name. Internal use only. Do not use!!!
+#define RPS_VK_DECLARE_VK_FUNCTION_PROTOTYPE(callName) PFN_##callName callName;
+
+/// @brief Dispatch table for using dynamically loaded functions. May not contain any nullptrs if passed at creation.
+typedef struct RpsVKFunctions
+{
+    RPS_VK_FUNCTION_TABLE(RPS_VK_DECLARE_VK_FUNCTION_PROTOTYPE)
+} RpsVKFunctions;
+
+#undef RPS_VK_DECLARE_VK_FUNCTION
 
 /// @brief Creation parameters for an RPS device with a Vulkan backend.
 typedef struct RpsVKRuntimeDeviceCreateInfo
@@ -41,8 +93,10 @@ typedef struct RpsVKRuntimeDeviceCreateInfo
     VkPhysicalDevice hVkPhysicalDevice;                    ///< Handle to the VK physical device to use for the runtime.
                                                            ///  Must not be VK_NULL_HANDLE.
     RpsVKRuntimeFlags flags;                               ///< VK runtime flags.
+    RpsVKFunctions*   pVkFunctions;                        ///< Pointer to a function table for using user-supplied API
+                                                           ///  implementations (e.g. dynamically loaded functions).
+                                                           ///  Ignored if RPS_VK_DYNAMIC_LOADING is not defined.
 } RpsVKRuntimeDeviceCreateInfo;
-
 /// @} end addtogroup RpsVKRuntimeDevice
 
 #ifdef __cplusplus
@@ -105,7 +159,7 @@ RpsResult rpsVKGetCmdArgImageView(const RpsCmdCallbackContext* pContext, uint32_
 typedef struct RpsVkImageViewInfo
 {
     VkImageView   hImageView;  ///< Handle to the image view.
-    VkImageLayout layout;      ///< Layout of the viwed image.
+    VkImageLayout layout;      ///< Layout of the viewed image.
 } RpsVkImageViewInfo;
 
 /// @brief Gets an array of VK image view infos from an image resource node argument.

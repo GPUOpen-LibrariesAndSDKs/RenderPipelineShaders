@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_D3D12_CMD_H_
-#define _RPS_D3D12_CMD_H_
+#ifndef RPS_D3D12_RUNTIME_BACKEND_HPP
+#define RPS_D3D12_RUNTIME_BACKEND_HPP
 
 #include "rps/runtime/d3d_common/rps_d3d_common.h"
 
@@ -120,6 +120,11 @@ namespace rps
         virtual void      DestroyResources(ArrayRef<ResourceInstance> resources) override final;
         virtual RpsResult CreateCommandResources(const RenderGraphUpdateContext& context) override final;
         virtual void      OnDestroy() override final;
+
+        virtual bool ShouldResetAliasedResourcesPrevFinalAccess() const override final
+        {
+            return m_device.GetEnhancedBarrierEnabled();
+        }
 
     private:
         RPS_NO_DISCARD
@@ -250,4 +255,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //_RPS_D3D12_CMD_H_
+#endif  //RPS_D3D12_RUNTIME_BACKEND_HPP

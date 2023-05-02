@@ -1,18 +1,23 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "core/rps_device.hpp"
 #include "core/rps_util.hpp"
 
+#ifndef RPS_ENABLE_DEFAULT_DEVICE_IMPL
+#define RPS_ENABLE_DEFAULT_DEVICE_IMPL 1
+#endif  //RPS_ENABLE_DEFAULT_DEVICE_IMPL
+
 namespace rps
 {
+#if RPS_ENABLE_DEFAULT_DEVICE_IMPL
     void* rpsDefaultMalloc(void* pContext, size_t size, size_t alignment)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_malloc(size, alignment);
 #else
         return aligned_alloc(alignment, rpsAlignUp(size, alignment));
@@ -21,7 +26,7 @@ namespace rps
 
     void rpsDefaultFree(void* pContext, void* ptr)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_free(ptr);
 #else
         return free(ptr);
@@ -65,7 +70,7 @@ namespace rps
 
     void* rpsDefaultRealloc(void* pContext, void* pOldBuffer, size_t oldSize, size_t newSize, size_t alignment)
     {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         return _aligned_realloc(pOldBuffer, newSize, alignment);
 #else
         return rpsFallbackRealloc(&s_DefaultAllocator, pOldBuffer, oldSize, newSize, alignment);
@@ -90,12 +95,15 @@ namespace rps
         &rpsDefaultVPrint,  // pfnVPrinf;
         nullptr,            // pContext;
     };
+#endif //RPS_ENABLE_DEFAULT_DEVICE_IMPL
 
     RpsResult Device::Create(const RpsDeviceCreateInfo* pCreateInfo, Device** ppDevice)
     {
         RPS_CHECK_ARGS(ppDevice);
 
         RpsDeviceCreateInfo createInfo = pCreateInfo ? *pCreateInfo : RpsDeviceCreateInfo{};
+
+#if RPS_ENABLE_DEFAULT_DEVICE_IMPL
 
         if (!createInfo.allocator.pfnAlloc)
         {
@@ -106,6 +114,14 @@ namespace rps
         {
             createInfo.printer = s_DefaultPrinter;
         }
+
+#else //RPS_ENABLE_DEFAULT_DEVICE_IMPL
+
+        RPS_CHECK_ARGS(createInfo.allocator.pfnAlloc && createInfo.allocator.pfnFree &&
+                       createInfo.allocator.pfnRealloc);
+        RPS_CHECK_ARGS(createInfo.printer.pfnPrintf && createInfo.printer.pfnVPrintf);
+
+#endif //RPS_ENABLE_DEFAULT_DEVICE_IMPL
 
         Device* pDevice;
         void*   pPrivateData;

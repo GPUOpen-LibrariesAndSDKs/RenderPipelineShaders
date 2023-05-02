@@ -1,16 +1,16 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #define RPS_D3D11_RUNTIME 1
 
-#include "test_render_to_texture_shared.h"
+#include "test_render_to_texture_shared.hpp"
 
-#include "utils/rps_test_win32.h"
-#include "utils/rps_test_d3d11_renderer.h"
+#include "utils/rps_test_win32.hpp"
+#include "utils/rps_test_d3d11_renderer.hpp"
 
 using namespace DirectX;
 
@@ -24,8 +24,9 @@ protected:
     virtual void OnInit() override
     {
         LoadAssets();
+        //No lifetime analysis required for DX11
+        TestRpsRenderToTexture::OnInit(RPS_RENDER_GRAPH_NO_LIFETIME_ANALYSIS);
 
-        TestRpsRenderToTexture::OnInit();
 
         RpsResult result = rpsProgramBindNode(
             rpsRenderGraphGetMainEntry(GetRpsRenderGraph()), "Quads", &TestD3D11RpsRenderToTexture::DrawQuads, this);

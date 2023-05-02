@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_render_states.h"
 #include "rps/runtime/d3d12/rps_d3d12_runtime.h"
@@ -255,7 +255,7 @@ namespace rps
             temporalSlice =
                 resInfo.isFirstTemporalSlice ? 0 : (resInfo.isTemporalSlice ? (temporalSlice + 1) : RPS_INDEX_NONE_U32);
 
-            if (resInfo.isPendingCreate)
+            if (resInfo.isPendingCreate && !resInfo.HasEmptyLifetime() && (resInfo.allocRequirement.size > 0))
             {
                 RPS_ASSERT(!resInfo.hRuntimeResource);
 
@@ -332,7 +332,14 @@ namespace rps
                         SetResourceDebugName(pD3DRes, resourceDecls[resInfo.resourceDeclId].name, temporalSlice);
                     }
                 }
-                resInfo.isPendingCreate = false;
+                else
+                {
+                    RPS_TODO("Unreachable code path. This is reserved for e.g. CommittedResource.");
+                }
+
+                static constexpr auto prevAccessNone = AccessAttr{};
+
+                resInfo.FinalizeRuntimeResourceCreation(bNeedsPlacedResourceInitState ? nullptr : &prevAccessNone);
             }
             else
             {
@@ -407,8 +414,10 @@ namespace rps
 
         RPS_RETURN_ERROR_IF(!nodeDeclInfo.MaybeGraphicsNode(), RPS_ERROR_INVALID_OPERATION);
 
-        const bool bBindRenderTargets = !rpsAnyBitsSet(cmd.callback.flags, RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT);
-        const bool bSetViewportScissors = !rpsAnyBitsSet(cmd.callback.flags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_BIT);
+        const auto cmdCbFlags = context.bIsCmdBeginEnd ? cmd.callback.flags : RPS_CMD_CALLBACK_FLAG_NONE;
+
+        const bool bBindRenderTargets   = !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_RENDER_TARGETS_BIT);
+        const bool bSetViewportScissors = !rpsAnyBitsSet(cmdCbFlags, RPS_CMD_CALLBACK_CUSTOM_VIEWPORT_SCISSOR_BIT);
 
         // Need to skip clears if it's render pass resume
         const bool bIsRenderPassResuming = rpsAnyBitsSet(context.renderPassFlags, RPS_RUNTIME_RENDER_PASS_RESUMING);
@@ -555,33 +564,13 @@ namespace rps
             uint32_t srcIndex = 0;
             uint32_t dstIndex = 0;
 
-            static constexpr uint32_t RESOLVE_BATCH = 128;
-            D3D12_RESOURCE_BARRIER    srcBarriers[RESOLVE_BATCH];
-            struct
-            {
-                ID3D12Resource* pDst;
-                uint32_t        dstSubResource;
-                DXGI_FORMAT     format;
-            } resolveInfos[RESOLVE_BATCH];
-            uint32_t numResolvesBatched = 0;
+            D3D12ResolveInfo resolveInfos[D3D12ResolveInfo::RESOLVE_BATCH_SIZE];
+            uint32_t         numResolvesBatched = 0;
 
             auto flushResolveBatch = [&]() {
                 if (numResolvesBatched > 0)
                 {
-                    pD3DCmdList->ResourceBarrier(numResolvesBatched, srcBarriers);
-
-                    for (uint32_t i = 0; i < numResolvesBatched; i++)
-                    {
-                        pD3DCmdList->ResolveSubresource(resolveInfos[i].pDst,
-                                                        resolveInfos[i].dstSubResource,
-                                                        srcBarriers[i].Transition.pResource,
-                                                        srcBarriers[i].Transition.Subresource,
-                                                        resolveInfos[i].format);
-
-                        std::swap(srcBarriers[i].Transition.StateBefore, srcBarriers[i].Transition.StateAfter);
-                    }
-
-                    pD3DCmdList->ResourceBarrier(numResolvesBatched, srcBarriers);
+                    m_pBarriers->RecordResolveBatch(pD3DCmdList, {resolveInfos, numResolvesBatched});
 
                     numResolvesBatched = 0;
                 }
@@ -625,20 +614,15 @@ namespace rps
                                                                   srcResInfo.desc.image.mipLevels,
                                                                   srcResInfo.desc.image.arrayLayers);
 
-                        if (numResolvesBatched == RESOLVE_BATCH)
+                        if (numResolvesBatched == D3D12ResolveInfo::RESOLVE_BATCH_SIZE)
                         {
                             flushResolveBatch();
                         }
 
-                        auto& barrier                  = srcBarriers[numResolvesBatched];
-                        barrier                        = {D3D12_RESOURCE_BARRIER_TYPE_TRANSITION};
-                        barrier.Transition.pResource   = pD3DResSrc;
-                        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-                        barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
-                        barrier.Transition.Subresource = srcSubRes;
-
                         auto& resolve          = resolveInfos[numResolvesBatched];
+                        resolve.pSrc           = pD3DResSrc;
                         resolve.pDst           = pD3DResDst;
+                        resolve.srcSubResource = srcSubRes;
                         resolve.dstSubResource = dstSubRes;
                         resolve.format         = format;
 

@@ -1,16 +1,32 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef RPS_VK_RUNTIME_DEVICE_H
-#define RPS_VK_RUNTIME_DEVICE_H
+#ifndef RPS_VK_RUNTIME_DEVICE_HPP
+#define RPS_VK_RUNTIME_DEVICE_HPP
 
 #include "runtime/common/rps_runtime_device.hpp"
 
 #include "rps/runtime/vk/rps_vk_runtime.h"
+
+#ifdef RPS_VK_DYNAMIC_LOADING
+#define RPS_VK_API_CALL(apiCall)   (rps_vkFunctions_.apiCall)
+#define RPS_USE_VK_FUNCTIONS(Expr) const RpsVKFunctions& rps_vkFunctions_ = Expr;
+#else
+#define RPS_VK_API_CALL(apiCall) (apiCall)
+#define RPS_USE_VK_FUNCTIONS(Expr)
+#endif
+
+#if VK_VERSION_1_3
+#define RPS_VK_ATTACHMENT_STORE_OP_NONE VK_ATTACHMENT_STORE_OP_NONE
+#elif VK_EXT_load_store_op_none
+#define RPS_VK_ATTACHMENT_STORE_OP_NONE VK_ATTACHMENT_STORE_OP_NONE_EXT
+#elif VK_KHR_dynamic_rendering
+#define RPS_VK_ATTACHMENT_STORE_OP_NONE VK_ATTACHMENT_STORE_OP_NONE_KHR
+#endif //VK_VERSION_1_3
 
 namespace rps
 {
@@ -67,13 +83,20 @@ namespace rps
 
         VkMemoryType GetVkHeapTypeInfo(uint32_t memoryTypeIndex) const;
 
-    private:
+        const RpsVKFunctions& GetVkFunctions() const
+        {
+            return m_vkFunctions;
+        }
+
         struct VKResourceAllocInfo
         {
             VkMemoryRequirements memoryRequirements;
             RpsRuntimeResource   hRuntimeResource;
         };
+
         RpsResult GetResourceAllocInfo(const ResourceInstance& resInstance, VKResourceAllocInfo& allocInfo) const;
+
+    private:
         uint32_t  GetResourceAspectMask(const ResourceInstance& resInfo) const;
         uint32_t  GetImageViewAspectMask(const ResourceDescPacked& resDesc, const RpsImageView& imageView) const;
         uint32_t  GetSubresourceCount(const ResourceInstance& resInfo) const;
@@ -85,9 +108,10 @@ namespace rps
         RpsVKRuntimeFlags m_flags = RPS_VK_RUNTIME_FLAG_NONE;
 
         // TODO: Store what we care
-        VkPhysicalDeviceProperties       m_deviceProperties       = {};
-        VkPhysicalDeviceMemoryProperties m_deviceMemoryProperties = {};
+        VkPhysicalDeviceProperties       m_deviceProperties          = {};
+        VkPhysicalDeviceMemoryProperties m_deviceMemoryProperties    = {};
         uint32_t                         m_hostVisibleMemoryTypeMask = 0;
+        RpsVKFunctions                   m_vkFunctions               = {};
     };
 
     RpsRuntimeResource ToHandle(VkImage hImage);
@@ -104,4 +128,4 @@ namespace rps
     }
 }
 
-#endif  //RPS_VK_RUNTIME_DEVICE_H
+#endif  //RPS_VK_RUNTIME_DEVICE_HPP

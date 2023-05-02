@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_UTIL_HPP_
-#define _RPS_UTIL_HPP_
+#ifndef RPS_UTIL_HPP
+#define RPS_UTIL_HPP
 
 #include "rps_core.hpp"
 
@@ -760,7 +760,7 @@ namespace rps
 
                 if (newCapacity && !newArray)
                 {
-                    RPS_DIAG("Allocation failed");
+                    RPS_DIAG(RPS_DIAG_ERROR, "Allocation failed");
                     return false;
                 }
 
@@ -868,7 +868,7 @@ namespace rps
 
                     if (!newArray)
                     {
-                        RPS_DIAG("Allocation failed");
+                        RPS_DIAG(RPS_DIAG_ERROR, "Allocation failed");
                         return false;
                     }
 
@@ -1065,7 +1065,7 @@ namespace rps
 
                 if (newCapacity && !newArray)
                 {
-                    RPS_DIAG("Allocation failed");
+                    RPS_DIAG(RPS_DIAG_ERROR, "Allocation failed");
                     return false;
                 }
 
@@ -1229,13 +1229,46 @@ namespace rps
             const size_t elementIdx = index / ELEMENT_NUM_BITS;
             const size_t bitIndex   = index % ELEMENT_NUM_BITS;
 
-            TElement& dstMask = m_bitVector[elementIdx];
-            TElement  mask    = (TElement(1) << bitIndex);
+            TElement& dstElement = m_bitVector[elementIdx];
+            TElement  mask       = (TElement(1) << bitIndex);
 
-            bool oldValue = !!(dstMask & mask);
-            dstMask       = newValue ? (dstMask | mask) : (dstMask & ~mask);
+            bool oldValue = !!(dstElement & mask);
+            dstElement    = newValue ? (dstElement | mask) : (dstElement & ~mask);
 
             return oldValue;
+        }
+
+        // Set the [beginIndex, endIndex) bit range to newValue.
+        // Returns if original bits in the range were all equal to the comparand.
+        bool CompareAndSetRange(size_t beginIndex, size_t endIndex, bool comparand, bool newValue)
+        {
+            bool bResult = true;
+
+            IterateRange(
+                *this, beginIndex, endIndex, [&bResult, comparand, newValue](TElement& dstElement, TElement mask) {
+                    bResult &= ((dstElement & mask) == (comparand ? mask : 0));
+                    dstElement = newValue ? (dstElement | mask) : (dstElement & ~mask);
+                });
+
+            return bResult;
+        }
+
+        bool CompareRange(size_t beginIndex, size_t endIndex, bool comparand) const
+        {
+            bool bResult = true;
+
+            IterateRange(*this, beginIndex, endIndex, [&bResult, comparand](const TElement& dstElement, TElement mask) {
+                bResult &= ((dstElement & mask) == (comparand ? mask : 0));
+            });
+
+            return bResult;
+        }
+
+        void SetRange(size_t beginIndex, size_t endIndex, bool newValue)
+        {
+            IterateRange(*this, beginIndex, endIndex, [newValue](TElement& dstElement, TElement mask) {
+                dstElement = newValue ? (dstElement | mask) : (dstElement & ~mask);
+            });
         }
 
         void SetBit(size_t index, bool value)
@@ -1245,18 +1278,18 @@ namespace rps
             const size_t elementIdx = index / ELEMENT_NUM_BITS;
             const size_t bitIndex   = index % ELEMENT_NUM_BITS;
 
-            TElement& dstMask = m_bitVector[elementIdx];
-            TElement  mask    = (TElement(1) << bitIndex);
-            dstMask           = value ? (dstMask | mask) : (dstMask & ~mask);
+            TElement& dstElement = m_bitVector[elementIdx];
+            TElement  mask       = (TElement(1) << bitIndex);
+            dstElement           = value ? (dstElement | mask) : (dstElement & ~mask);
         }
 
         void SetBit(BitIndex index, bool value)
         {
             RPS_ASSERT(index < m_BitSize);
 
-            TElement& dstMask = m_bitVector[index.element];
-            TElement  mask    = (TElement(1) << index.bit);
-            dstMask           = value ? (dstMask | mask) : (dstMask & ~mask);
+            TElement& dstElement = m_bitVector[index.element];
+            TElement  mask       = (TElement(1) << index.bit);
+            dstElement           = value ? (dstElement | mask) : (dstElement & ~mask);
         }
 
         BitIndex FindFirstBitLow(size_t startElement) const
@@ -1270,6 +1303,57 @@ namespace rps
             }
 
             return BitIndex{RPS_INDEX_NONE_U32, RPS_INDEX_NONE_U32};
+        }
+
+        void Clone(BitVector<TElement>& other) const
+        {
+            other.Resize(size());
+            std::copy(m_bitVector.begin(), m_bitVector.end(), other.m_bitVector.begin());
+        }
+
+    private:
+
+        template <typename TFunc, typename TSelf>
+        static void IterateRange(TSelf& self, size_t beginIndex, size_t endIndex, TFunc elementHandler)
+        {
+            RPS_ASSERT(beginIndex < self.m_BitSize);
+            RPS_ASSERT(endIndex <= self.m_BitSize);
+            RPS_ASSERT(beginIndex <= endIndex);
+
+            const size_t beginElementIdx = beginIndex / ELEMENT_NUM_BITS;
+            const size_t beginBitIndex   = beginIndex % ELEMENT_NUM_BITS;
+            const size_t endElementIdx   = endIndex / ELEMENT_NUM_BITS;
+            const size_t endBitIndex     = endIndex % ELEMENT_NUM_BITS;
+
+            bool bResult = true;
+
+            if (beginIndex != endIndex)
+            {
+                auto&    dstElement = self.m_bitVector[beginElementIdx];
+                TElement mask       = (~((TElement(1) << beginBitIndex) - 1));
+
+                if (beginElementIdx == endElementIdx)
+                {
+                    mask = mask & ((TElement(1) << endBitIndex) - 1);
+                }
+
+                elementHandler(dstElement, mask);
+            }
+
+            for (size_t i = beginElementIdx + 1; i < endElementIdx; i++)
+            {
+                auto& dstElement = self.m_bitVector[i];
+
+                elementHandler(dstElement, ~(TElement(0)));
+            }
+
+            if ((beginElementIdx != endElementIdx) && (endElementIdx < self.m_bitVector.size()))
+            {
+                auto&    dstElement = self.m_bitVector[endElementIdx];
+                TElement mask       = ((TElement(1) << endBitIndex) - 1);
+
+                elementHandler(dstElement, mask);
+            }
         }
 
     private:
@@ -2627,28 +2711,29 @@ namespace rps
                                      StrRef                               separator     = " | ",
                                      StrRef                               defaultString = "NONE") const
         {
-            bool bFirstMatch = true;
+            bool bPrintedAnyFlag = false;
 
             for (auto& nameValuePair : names)
             {
                 if (value == nameValuePair.value)
                 {
                     (*this)(nameValuePair.name);
+                    bPrintedAnyFlag = true;
                     break;
                 }
                 else if (value & nameValuePair.value)
                 {
-                    if (!bFirstMatch)
+                    if (bPrintedAnyFlag)
                     {
                         (*this)(separator);
                     }
                     (*this)(nameValuePair.name);
 
-                    bFirstMatch = false;
+                    bPrintedAnyFlag = true;
                 }
             }
 
-            if (bFirstMatch)
+            if (!bPrintedAnyFlag)
             {
                 (*this)(defaultString);
             }
@@ -2706,4 +2791,4 @@ namespace rps
 
 }  // namespace rps
 
-#endif  // _RPS_UTIL_HPP_
+#endif  // RPS_UTIL_HPP

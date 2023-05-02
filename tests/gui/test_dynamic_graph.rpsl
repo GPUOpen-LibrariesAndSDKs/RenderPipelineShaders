@@ -1,0 +1,83 @@
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+//
+// This file is part of the AMD Render Pipeline Shaders SDK which is
+// released under the AMD INTERNAL EVALUATION LICENSE.
+//
+// See file LICENSE.txt for full license details.
+
+node          GfxDraw(rtv offscreenRenderTarget : SV_Target0);
+compute node  ComputeDraw(uav dst);
+graphics node Blt(rtv backBuffer : SV_Target0, srv offscreenRenderTarget);
+
+export void dynamic_graph([readonly(present)] texture backbuffer, uint frameIndex)
+{
+    ResourceDesc backbufferDesc = backbuffer.desc();
+    uint32_t width = (uint32_t)backbufferDesc.Width / 2;
+    uint32_t height = (uint32_t)backbufferDesc.Height;
+    RPS_FORMAT backbufferFormat = backbufferDesc.Format;
+
+    // create the resources we need for the offscreen rendering, as well as a view into it.
+
+    texture persistentTexture =
+        create_tex2d(backbufferFormat, width, height, 1, 1, 1, 1, 0, RPS_RESOURCE_FLAG_PERSISTENT);
+
+    texture temporalTexture = null;
+
+    // Prime number that's >> 5 (to cover temporalTexture use cases below for both on and off)
+    // and << 300 (default total frames, so we toggle this a few times during the test)
+    const uint32_t ToggleTemporalResourceInterval = 53;
+
+    bool bUseTemporalTexture = ((frameIndex / ToggleTemporalResourceInterval) & 1) == 0;
+
+    if (bUseTemporalTexture)
+    {
+        temporalTexture = create_tex2d(backbufferFormat, width, height, 1, 1, 3);
+    }
+
+    texture tempTex1 = create_tex2d(backbufferFormat, width, height);
+
+    bool bDrawTempTex1 = false;
+
+    if ((frameIndex % 2) == 0)
+    {
+        ComputeDraw(tempTex1);
+        GfxDraw(persistentTexture);
+
+        if (bUseTemporalTexture)
+        {
+            GfxDraw(temporalTexture);
+        }
+
+        bDrawTempTex1 = true;
+    }
+
+    if ((frameIndex % 5) != 0)
+    {
+        GfxDraw(tempTex1);
+        ComputeDraw(persistentTexture);
+
+        if (bUseTemporalTexture)
+        {
+            ComputeDraw(temporalTexture);
+        }
+
+        bDrawTempTex1 = true;
+    }
+
+    if (bDrawTempTex1)
+    {
+        Blt(backbuffer, tempTex1);
+    }
+
+    if (((frameIndex % 3) == 0) || (frameIndex == 5))
+    {
+        texture tempTex2 = create_tex2d(backbufferFormat, width, height / 2);
+        texture tempTex3 = create_tex2d(backbufferFormat, width / 2, height / 2);
+
+        GfxDraw(tempTex2);
+        ComputeDraw(tempTex3);
+
+        Blt(backbuffer, tempTex2);
+        Blt(backbuffer, tempTex3);
+    }
+}

@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_CMD_DAG_SCHEDULE_HPP_
-#define _RPS_CMD_DAG_SCHEDULE_HPP_
+#ifndef RPS_DAG_SCHEDULE_HPP
+#define RPS_DAG_SCHEDULE_HPP
 
 #include "rps/runtime/common/rps_runtime.h"
 
@@ -184,12 +184,13 @@ namespace rps
             // [15]      : Work Type Grouping
             // [8]       : Work Type Interleave
             // [0  : 15] : Program Order
-            // Note WorkType grouping bit can be shifted within the Program Order bit range,
-            // and BarrierBatching bit can be shifted within the Memory Saving bit range.
-            // This allows us to select to be able to interpolate between ordering preferences.
-            // For example, if the schedule option prefers barrier batching over memroy saving,
-            // we can put barrier batching bit on the highest bit in the memory saving score range,
-            // and vice versa.
+            // Note: The Work Type Grouping bit can be shifted within the Program Order bit range,
+            // and the Barrier Batching High bit can be shifted within the Memory Saving bit range.
+            // This allows us to interpolate between ordering preferences.
+            // For example, if the schedule option prefers barrier batching over memory saving,
+            // we can put the barrier batching bit on the highest bit in the memory saving score range,
+            // and vice versa. In general, these are the default initial weight assignment of different node scheduling
+            // factors. The actual weights of each factor are not limited to their ranges and may overlap.
 
             static constexpr uint32_t ScopeScoreBit         = (1u << 31);
             static constexpr uint32_t QueueScoreBit         = (1u << 30);
@@ -374,17 +375,17 @@ namespace rps
                         // Prioritize independent node between workload on another queue and its immediate dependent node.
 
                         // Penalize nodes who want a queue switch.
-                        if (0 == (nodeInfo.preferredQueueMask & currQueueMask))
+                        if (!rpsAnyBitsSet(currQueueMask, nodeInfo.preferredQueueMask))
                         {
+                            queueScore = (QueueScoreBit >> 1);
+
                             // Candidate require a queue switch, and is an immediate dependent node of the previously scheduled command,
                             // raise penalty.
-                            if ((0 == (nodeInfo.validQueueMask & currQueueMask)) &&
+                            if ((!rpsAnyBitsSet(currQueueMask, nodeInfo.validQueueMask)) &&
                                 (readyNodes[iRN].depNodeId == lastCmdNodeId))
                             {
                                 queueScore = 0;
                             }
-
-                            queueScore = (QueueScoreBit >> 1);
                         }
                     }
 
@@ -1071,14 +1072,14 @@ namespace rps
 
                 if (currAtomicSGId != srcAtomicSGId)
                 {
-                    if (!graph.IsParentSubgraphOf(currAtomicSGId, srcAtomicSGId))
+                    if (!graph.IsParentSubgraph(currAtomicSGId, srcAtomicSGId))
                     {
                         addEdgeFromSGBegin = true;
 
                         uint32_t outermostAtomicSGIdx = currAtomicSGId;
                         for (uint32_t parentAtomicId = currAtomicSGId;
                              (parentAtomicId != RPS_INDEX_NONE_U32) &&
-                             !graph.IsParentSubgraphOf(parentAtomicId, srcAtomicSGId);
+                             !graph.IsParentSubgraph(parentAtomicId, srcAtomicSGId);
                              parentAtomicId = subgraphSchInfos[parentAtomicId].atomicParentId)
                         {
                             outermostAtomicSGIdx = parentAtomicId;
@@ -1110,14 +1111,14 @@ namespace rps
 
                 if (currAtomicSGId != dstAtomicSGId)
                 {
-                    if (!graph.IsParentSubgraphOf(currAtomicSGId, dstAtomicSGId))
+                    if (!graph.IsParentSubgraph(currAtomicSGId, dstAtomicSGId))
                     {
                         addEdgeToSGEnd = RPS_TRUE;
 
                         uint32_t outermostAtomicSGIdx = currAtomicSGId;
                         for (uint32_t parentAtomicId = currAtomicSGId;
                              (parentAtomicId != RPS_INDEX_NONE_U32) &&
-                             !graph.IsParentSubgraphOf(parentAtomicId, dstAtomicSGId);
+                             !graph.IsParentSubgraph(parentAtomicId, dstAtomicSGId);
                              parentAtomicId = subgraphSchInfos[parentAtomicId].atomicParentId)
                         {
                             outermostAtomicSGIdx = parentAtomicId;
@@ -1167,4 +1168,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //_RPS_CMD_DAG_SCHEDULE_HPP_
+#endif  //RPS_DAG_SCHEDULE_HPP

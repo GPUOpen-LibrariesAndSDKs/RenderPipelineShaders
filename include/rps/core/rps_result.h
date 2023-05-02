@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_ERRORCODES_H_
-#define _RPS_ERRORCODES_H_
+#ifndef RPS_RESULT_H
+#define RPS_RESULT_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -132,4 +132,4 @@ const char* rpsResultGetName(RpsResult result);
 }
 #endif // __cplusplus
 
-#endif // #ifndef _RPS_ERRORCODES_H_
+#endif // #ifndef RPS_RESULT_H

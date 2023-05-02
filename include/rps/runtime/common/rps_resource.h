@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_RESOURCE_H_
-#define _RPS_RESOURCE_H_
+#ifndef RPS_RESOURCE_H
+#define RPS_RESOURCE_H
 
 #include "rps/core/rps_api.h"
 #include "rps/runtime/common/rps_format.h"
@@ -68,7 +68,7 @@ typedef RpsFlags32 RpsImageAspectUsageFlags;
 
 /// @brief RGBA color value to use for clearing a resource.
 ///
-/// Depending on the underlaying format of a resource, an appropriately
+/// Depending on the underlying format of a resource, an appropriately
 /// typed member of this union should be used.
 typedef union RpsClearColorValue
 {
@@ -172,6 +172,7 @@ typedef struct RpsCmdRenderTargetInfo
 
 namespace rps
 {
+
     /// @brief A C++ helper type for RpsResourceDesc.
     struct ResourceDesc : public RpsResourceDesc
     {
@@ -199,12 +200,12 @@ namespace rps
             temporalLayers = inTemporalLayers;
             flags          = inFlags;
 
-            if (inType == RPS_RESOURCE_TYPE_BUFFER)
+            if (IsBuffer())
             {
                 buffer.sizeInBytesLo = uint32_t(inWidth & UINT32_MAX);
                 buffer.sizeInBytesHi = uint32_t(inWidth >> 32u);
             }
-            else
+            else if (IsImage())
             {
                 image.width  = uint32_t(inWidth);
                 image.height = inHeight;
@@ -220,17 +221,29 @@ namespace rps
             }
         }
 
-        /// @brief Checks if the described resource is a buffer
-        bool IsBuffer() const
+        /// @brief Checks if the resource type is a buffer.
+        static bool IsBuffer(RpsResourceType type)
         {
             return type == RPS_RESOURCE_TYPE_BUFFER;
         }
 
-        /// @brief Checks if the described resource is an image (texture)
-        bool IsImage() const
+        /// @brief Checks if the resource type is an image (texture).
+        static bool IsImage(RpsResourceType type)
         {
             return (type == RPS_RESOURCE_TYPE_IMAGE_1D) || (type == RPS_RESOURCE_TYPE_IMAGE_2D) ||
                    (type == RPS_RESOURCE_TYPE_IMAGE_3D);
+        }
+
+        /// @brief Checks if the described resource is a buffer.
+        bool IsBuffer() const
+        {
+            return IsBuffer(type);
+        }
+
+        /// @brief Checks if the described resource is an image (texture).
+        bool IsImage() const
+        {
+            return IsImage(type);
         }
 
         /// @brief Creates a resource description for a buffer resource.
@@ -238,7 +251,8 @@ namespace rps
                                    uint32_t         inTemporalLayers = 1,
                                    RpsResourceFlags inFlags          = RPS_RESOURCE_FLAG_NONE)
         {
-            return ResourceDesc(RPS_RESOURCE_TYPE_BUFFER, RPS_FORMAT_UNKNOWN, inSizeInBytes, 1);
+            return ResourceDesc(
+                RPS_RESOURCE_TYPE_BUFFER, RPS_FORMAT_UNKNOWN, inSizeInBytes, 1, 1, 1, 1, inTemporalLayers, inFlags);
         }
 
         /// @brief Creates a resource description structure for an 1D Texture resource.
@@ -323,4 +337,4 @@ namespace rps
 
 /// @} end addtogroup RpsRenderGraphRuntimeResources
 
-#endif  //_RPS_RESOURCE_H_
+#endif  //RPS_RESOURCE_H

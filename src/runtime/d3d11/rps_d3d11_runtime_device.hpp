@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_DEVICE_D3D11_H_
-#define _RPS_DEVICE_D3D11_H_
+#ifndef RPS_D3D11_RUNTIME_DEVICE_HPP
+#define RPS_D3D11_RUNTIME_DEVICE_HPP
 
 #include "rps/runtime/d3d11/rps_d3d11_runtime.h"
 
@@ -40,6 +40,14 @@ namespace rps
         {
             return ((aspectMask & 1) ? (RPS_IMAGE_ASPECT_COLOR | RPS_IMAGE_ASPECT_DEPTH) : RPS_IMAGE_ASPECT_UNKNOWN) |
                    ((aspectMask & 2) ? RPS_IMAGE_ASPECT_STENCIL : RPS_IMAGE_ASPECT_UNKNOWN);
+        }
+
+        virtual void PrepareRenderGraphCreation(RpsRenderGraphCreateInfo& renderGraphCreateInfo) const override final
+        {
+            //No mem aliasing support in DX11
+            renderGraphCreateInfo.renderGraphFlags |= RPS_RENDER_GRAPH_NO_GPU_MEMORY_ALIASING;
+
+            RuntimeDevice::PrepareRenderGraphCreation(renderGraphCreateInfo);
         }
 
         static ID3D11Resource* FromHandle(RpsRuntimeResource hRuntimeResource)
@@ -83,4 +91,4 @@ namespace rps
     };
 }  // namespace rps
 
-#endif  //_RPS_DEVICE_D3D11_H_
+#endif  //RPS_D3D11_RUNTIME_DEVICE_HPP

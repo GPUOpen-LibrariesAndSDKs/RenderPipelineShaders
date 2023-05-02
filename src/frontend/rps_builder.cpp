@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/frontend/rps_builder.h"
 
@@ -120,6 +120,7 @@ RpsNodeId rpsRenderGraphAddNode(RpsRenderGraphBuilder builder,
                                 uint32_t              tag,
                                 PFN_rpsCmdCallback    callback,
                                 void*                 callbackContext,
+                                RpsCmdCallbackFlags   callbackFlags,
                                 const RpsVariable*    pArgs,
                                 uint32_t              numArgs)
 {
@@ -127,10 +128,12 @@ RpsNodeId rpsRenderGraphAddNode(RpsRenderGraphBuilder builder,
 
     RpsNodeId nodeId = RPS_CMD_ID_INVALID;
 
-    RPS_RETURN_ERROR_IF(
-        RPS_FAILED(rps::FromHandle(builder)->AddCmdNode(nodeDeclId, tag, {callback, callbackContext}, pArgs, numArgs, &nodeId)),
-        RPS_CMD_ID_INVALID);
-    
+    const RpsCmdCallback callbackInfo = {callback, callbackContext, callbackFlags};
+
+    RPS_RETURN_ERROR_IF(RPS_FAILED(rps::FromHandle(builder)->AddCmdNode(
+                            nodeDeclId, tag, callbackInfo, pArgs, numArgs, &nodeId)),
+                        RPS_CMD_ID_INVALID);
+
     RPS_ASSERT((nodeId != RPS_CMD_ID_INVALID) && "invalid RenderGraphBuilder::AddCmdNode impl");
 
     return nodeId;

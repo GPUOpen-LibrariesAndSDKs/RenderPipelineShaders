@@ -1,12 +1,12 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
-#ifndef _RPS_D3D12_UTILS_H_
-#define _RPS_D3D12_UTILS_H_
+#ifndef RPS_D3D12_UTIL_HPP
+#define RPS_D3D12_UTIL_HPP
 
 #include "rps/runtime/d3d12/rps_d3d12_runtime.h"
 #include "runtime/d3d_common/rps_d3d_common_util.hpp"
@@ -155,9 +155,7 @@ namespace rps
         pRpsDesc->type  = D3D12ResourceDimensionToRps(pD3D12Desc->Dimension);
         pRpsDesc->flags = D3D12ResourceFlagsToRps(pD3D12Desc->Flags);
 
-        if ((pD3D12Desc->Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE1D) ||
-            (pD3D12Desc->Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D) ||
-            (pD3D12Desc->Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D))
+        if (ResourceDesc::IsImage(pRpsDesc->type))
         {
             pRpsDesc->image.format = rpsFormatFromDXGI(pD3D12Desc->Format);
             pRpsDesc->image.width  = uint32_t(pD3D12Desc->Width);
@@ -177,7 +175,7 @@ namespace rps
                 pRpsDesc->flags |= RPS_RESOURCE_FLAG_ROWMAJOR_IMAGE_BIT;
             }
         }
-        else if (pD3D12Desc->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+        else if (ResourceDesc::IsBuffer(pRpsDesc->type))
         {
             pRpsDesc->buffer.sizeInBytesHi = uint32_t(pD3D12Desc->Width >> 32u);
             pRpsDesc->buffer.sizeInBytesLo = uint32_t(pD3D12Desc->Width & UINT32_MAX);
@@ -247,4 +245,4 @@ namespace rps
 
 }  // namespace rps
 
-#endif  //_RPS_D3D12_UTILS_H_
+#endif  //RPS_D3D12_UTIL_HPP

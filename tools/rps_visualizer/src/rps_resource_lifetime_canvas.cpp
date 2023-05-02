@@ -1,9 +1,9 @@
-// Copyright (c) 2022 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is part of the AMD Render Pipeline Shaders SDK which is
 // released under the AMD INTERNAL EVALUATION LICENSE.
 //
-// See file LICENSE.RTF for full license details.
+// See file LICENSE.txt for full license details.
 
 #include "rps/runtime/common/rps_runtime.h"
 
@@ -588,6 +588,64 @@ namespace rps
         }
     }
 
+    void ResourceLifetimesCanvas::DrawAccessDiscardMarkers(const DrawingState&  state,
+                                                           ImDrawList*          pDrawList,
+                                                           const UIRect&        accessRect,
+                                                           const AccessVisInfo& accessInfo)
+    {
+        static constexpr float OneOverSqrt3       = 0.57735f;
+        static constexpr ImU32 DiscardMarkerColor = IM_COL32(0xff, 0, 0, 0xff);
+        static constexpr ImU32 DiscardMarkerBorderColor = IM_COL32(0x7f, 0, 0, 0xff);
+
+        static constexpr RpsAccessFlags DiscardBeforeFlags =
+            (RPS_ACCESS_DISCARD_DATA_BEFORE_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_BEFORE_BIT);
+        static constexpr RpsAccessFlags DiscardAfterFlags =
+            (RPS_ACCESS_DISCARD_DATA_AFTER_BIT | RPS_ACCESS_STENCIL_DISCARD_DATA_AFTER_BIT);
+
+        const float triHeight = (accessRect.end.y - accessRect.start.y) * 0.35f;
+
+        if (accessInfo.access.accessFlags & DiscardBeforeFlags)
+        {
+            ImVec2 markerTri[3] = {
+                {accessRect.start.x, accessRect.start.y},
+                {accessRect.start.x + triHeight, accessRect.start.y},
+                {accessRect.start.x, accessRect.start.y + triHeight},
+            };
+            pDrawList->PushClipRect(accessRect.start, accessRect.end + ImVec2(1, 0), true);
+            pDrawList->AddTriangleFilled(markerTri[0], markerTri[1], markerTri[2], DiscardMarkerColor);
+            pDrawList->AddTriangle(markerTri[0], markerTri[1], markerTri[2], DiscardMarkerBorderColor);
+            pDrawList->PopClipRect();
+
+            if (ImTriangleContainsPoint(markerTri[0], markerTri[1], markerTri[2], state.mousePosScr))
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted("Previous data discarded.");
+                ImGui::EndTooltip();
+            }
+        }
+
+        if (accessInfo.access.accessFlags & DiscardAfterFlags)
+        {
+            ImVec2 markerTri[3] = {
+                {accessRect.end.x - triHeight, accessRect.end.y},
+                {accessRect.end.x, accessRect.end.y - triHeight},
+                {accessRect.end.x, accessRect.end.y},
+            };
+
+            pDrawList->PushClipRect(accessRect.start, accessRect.end + ImVec2(1, 0), true);
+            pDrawList->AddTriangleFilled(markerTri[0], markerTri[1], markerTri[2], DiscardMarkerColor);
+            pDrawList->AddTriangle(markerTri[0], markerTri[1], markerTri[2], DiscardMarkerBorderColor);
+            pDrawList->PopClipRect();
+
+            if (ImTriangleContainsPoint(markerTri[0], markerTri[1], markerTri[2], state.mousePosScr))
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted("Data discarded afterwards.");
+                ImGui::EndTooltip();
+            }
+        }
+    }
+
     void ResourceLifetimesCanvas::DrawResourceTimelines(DrawingState& state)
     {
         if (m_tableUpdateState.numVisibleRows < m_resourceTimelineCache.size())
@@ -711,6 +769,11 @@ namespace rps
                     else if (state.settings.bDrawResourceConnectors)
                     {
                         pDrawList->AddLine({rect.start.x, rowCenterY}, {rect.end.x, rowCenterY}, timelineColor);
+                    }
+
+                    if (state.settings.bDrawSubResourceDataLifetimeMarkers)
+                    {
+                        DrawAccessDiscardMarkers(state, pDrawList, rect, access);
                     }
 
                     if (bHoveringRow && pHoveredCmd && rect.Contains(state.mousePosScr))
