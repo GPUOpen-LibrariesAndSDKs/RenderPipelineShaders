@@ -221,8 +221,8 @@ protected:
             if (c_bBreathing)
             {
                 argDataCount = 2;
-                time = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
-                argData[1] = &time;
+                time         = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
+                argData[1]   = &time;
             }
 
             // RpsAfx always waits for presentation before rendering to a swapchain image again,
