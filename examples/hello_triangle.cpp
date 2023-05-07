@@ -216,12 +216,13 @@ protected:
             const RpsRuntimeResource* argResources[2] = {backBufferResources};
 
             uint32_t argDataCount = 1;
+            float time;
 
             if (c_bBreathing)
             {
                 argDataCount = 2;
-                float time   = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
-                argData[1]   = &time;
+                time = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
+                argData[1] = &time;
             }
 
             // RpsAfx always waits for presentation before rendering to a swapchain image again,
