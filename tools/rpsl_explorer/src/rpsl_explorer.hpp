@@ -220,8 +220,10 @@ private:
             {
                 LogFmt("\nCompiling...");
 
+                std::filesystem::path hlslcPath = "rps_hlslc/rps-hlslc.exe";
+
                 std::stringstream rpsHlslcCmdLine;
-                rpsHlslcCmdLine << "rps_hlslc/rps-hlslc.exe \"" << pendingFileName << "\" -od \"" << tmpDir << "\" -m "
+                rpsHlslcCmdLine << hlslcPath.make_preferred().string() << " \"" << pendingFileName << "\" -od \"" << tmpDir.string() << "\" -m "
                                 << moduleName << " -O3 -rps-target-dll -rps-bc -cbe=0";
 
                 auto s = rpsHlslcCmdLine.str();
