@@ -217,10 +217,12 @@ protected:
 
             uint32_t argDataCount = 1;
 
+            float time = 0.f;
+
             if (c_bBreathing)
             {
                 argDataCount = 2;
-                float time   = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
+                time         = float(RpsAfxCpuTimer::SecondsSinceEpoch().count());
                 argData[1]   = &time;
             }
 

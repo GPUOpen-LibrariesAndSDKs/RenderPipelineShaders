@@ -17,7 +17,7 @@ if ( NOT RpsJITSupported )
 endif()
 
 foreach( TestSrc ${ConsoleTestSrcs} )
-    SetupTestApp( ${TestSrc} "${AppFolder}/console" "" "" False False)
+    SetupTestApp( ${TestSrc} "${AppFolder}/console" "" "" True False)
 endforeach( )
 
 # Per app settings

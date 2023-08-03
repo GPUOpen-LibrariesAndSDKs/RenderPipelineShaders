@@ -87,6 +87,12 @@ After a successful build:
 
 - By default, the RPSL Explorer binaries can be located at `./build/tools/rpsl_explorer/<config_name>/`. Run `rpsl_explorer.exe` and open an RPSL file to start hacking!
 
+## Getting Started
+
+If you are new to RPS, we recommend reading through our tutorial which you can find at [./docs/tutorial](./docs/tutorial) in this repository and at [https://gpuopen.com/learn/rps-tutorial](https://gpuopen.com/learn/rps-tutorial) on GPUOpen.
+
+After this, you should be well equipped to browse the [test samples](./tests) and let RPS drive the frame graph logic of your own 3D application.
+
 ## Documentation
 
 The main sources of documentation for the RPS public APIs are inlined Doxygen-style comments, which can be built into
@@ -95,6 +101,10 @@ HTML documents if Doxygen is installed (tested with Doxygen version 1.9.2):
 ```bash
 doxygen
 ```
+
+## Getting Help
+
+If you are facing any problems that you cannot solve by checking out the documentation or the samples, do not worry. You can contact us by [raising GitHub issues](https://github.com/GPUOpen-LibrariesAndSDKs/RenderPipelineShaders/issues), [@GPUOpen](https://twitter.com/GPUOpen) on Twitter, [@GPUOpen@mastodon.gamedev.place](@GPUOpen@mastodon.gamedev.place) on Mastodon and by using [this invitation link](https://discord.gg/sZhDJ2rDa9), you can join our Discord server and chat with the RPS team directly. 
 
 ## Integration
 

@@ -7,12 +7,18 @@
 
 cmake_minimum_required(VERSION 3.12.1)
 
+# setting cache variables and options should never overwrite normal variables;
+# otherwise, user settings set before including rps as a subdirectory can be overwritten.
+cmake_policy(SET CMP0126 NEW)
+cmake_policy(SET CMP0077 NEW)
+
 option( RpsBuildTests "Enable unit test targets" ON )
 option( RpsBuildTools "Enable tool targets" ON )
 option( RpsBuildExamples "Enable example targets" ON )
 option( RpsEnableVulkan "Enable Vulkan backend" ON )
 option( RpsEnableImGui "Enable ImGui" ON)
 option( RpsEnableDXAgilitySDK "Enable DX12 Agility SDK" OFF )
+option( RpsPackagingIncludeStaticLibs "Include prebuilt static libs during packaging" OFF )
 option( RpsEnableDefaultDeviceImpl "Enable default allocator & printer support" ON )
 
 if ( "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "" )
@@ -228,16 +234,18 @@ function( CopyShaders TargetName ShaderFiles SrcFolder )
     endforeach()
 endfunction()
 
-FindSpirvTools( SPIRV_DXCOMPILER_DLL )
-CheckFindFile( SPIRV_DXCOMPILER_DLL ${SPIRV_DXCOMPILER_DLL} )
+if ( RpsEnableVulkan )
+    FindSpirvTools( SPIRV_DXCOMPILER_DLL )
+    CheckFindFile( SPIRV_DXCOMPILER_DLL ${SPIRV_DXCOMPILER_DLL} )
 
-function( CopySpirvDXC TargetName )
-    add_custom_command(
-        TARGET ${TargetName} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${SPIRV_DXCOMPILER_DLL}
-        $<TARGET_FILE_DIR:${TargetName}>/spirv_dxc/dxcompiler.dll)
-endfunction()
+    function( CopySpirvDXC TargetName )
+        add_custom_command(
+            TARGET ${TargetName} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${SPIRV_DXCOMPILER_DLL}
+            $<TARGET_FILE_DIR:${TargetName}>/spirv_dxc/dxcompiler.dll)
+    endfunction()
+endif()
 
 if ( WIN32 )
 
@@ -465,4 +473,8 @@ endif ( )
 
 if ( RpsBuildTools )
     add_subdirectory( tools )
+endif ( )
+
+if ( RpsBuildExamples )
+    add_subdirectory( examples )
 endif ( )

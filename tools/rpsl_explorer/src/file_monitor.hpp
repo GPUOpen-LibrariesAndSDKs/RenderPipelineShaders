@@ -15,7 +15,7 @@
 class FileMonitor
 {
 public:
-    static constexpr DWORD UM_FILE_CHANGED = WM_USER + 4097;
+    static constexpr UINT UM_FILE_CHANGED = WM_USER + 4097;
 
     void SetNotificationCallback(std::function<void(const std::string&)> func)
     {
@@ -33,14 +33,26 @@ public:
         SHChangeNotifyEntry notifyEntry = {};
         notifyEntry.pidl                = ILCreateFromPathA(fileName.c_str());
 
+        if (notifyEntry.pidl == NULL)
+        {
+            return false;
+        }
+
         ULONG uId = SHChangeNotifyRegister(hWndListener,
-                                           SHCNRF_InterruptLevel | SHCNRF_NewDelivery,
+                                           SHCNRF_InterruptLevel | SHCNRF_ShellLevel | SHCNRF_NewDelivery,
                                            SHCNE_RENAMEITEM | SHCNE_DELETE | SHCNE_UPDATEITEM,
                                            UM_FILE_CHANGED,
                                            1,
                                            &notifyEntry);
 
-        return (uId != 0);
+        if (uId != 0)
+        {
+            m_registerIDs.emplace(fileName, uId);
+
+            return true;
+        }
+
+        return false;
     }
 
     void EndWatch(const std::string& fileName)
@@ -74,22 +86,30 @@ public:
                     srcPath = buf;
                 }
 
-                if (ppidl[1])
+                if (eventID & SHCNE_RENAMEITEM)
                 {
                     SHGetPathFromIDListA(ppidl[1], buf);
-                    srcPath = buf;
+                    dstPath = buf;
                 }
 
                 SHChangeNotification_Unlock(hLock);
 
-                if (eventID == SHCNE_UPDATEITEM)
+                switch (eventID)
                 {
+                case SHCNE_RENAMEITEM:
+                    printf("\nFile renamed: %s -> %s", srcPath.c_str(), dstPath.c_str());
+                    break;
+                case SHCNE_DELETE:
+                    printf("\nFile deleted: %s", srcPath.c_str());
+                    break;
+                case SHCNE_UPDATEITEM:
                     printf("\nFile changed: %s", srcPath.c_str());
 
                     if (m_callback)
                     {
                         m_callback(srcPath);
                     }
+                    break;
                 }
             }
 

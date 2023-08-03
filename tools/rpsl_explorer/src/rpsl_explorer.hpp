@@ -165,7 +165,10 @@ private:
         // Display the Open dialog box.
         if (GetOpenFileNameA(&ofn) == TRUE)
         {
-            m_fileMonitor.BeginWatch(m_hWnd, szFile);
+            if (!m_fileMonitor.BeginWatch(m_hWnd, szFile))
+            {
+                LogFmt("\nFailed to set up monitoring for file changes!");
+            }
             // TODO: Watch includes too
 
             OnSourceUpdated(szFile);
@@ -220,15 +223,19 @@ private:
             {
                 LogFmt("\nCompiling...");
 
+                auto compilerPath = std::filesystem::path("rps_hlslc/rps-hlslc.exe");
+                compilerPath.make_preferred();
+
                 std::stringstream rpsHlslcCmdLine;
-                rpsHlslcCmdLine << "rps_hlslc/rps-hlslc.exe \"" << pendingFileName << "\" -od \"" << tmpDir << "\" -m "
-                                << moduleName << " -O3 -rps-target-dll -rps-bc -cbe=0";
+                rpsHlslcCmdLine << compilerPath << " " << rpslFilePath << " -od " << tmpDir << " -m " << moduleName
+                                << " -O3 -rps-target-dll -rps-bc -cbe=0";
 
-                auto s = rpsHlslcCmdLine.str();
 
-                if (!LaunchProcess(rpsHlslcCmdLine.str().c_str()))
+                std::string cmdStr = rpsHlslcCmdLine.str();
+
+                if (!LaunchProcess(cmdStr.c_str()))
                 {
-                    LogFmt("\nFailed to compile RPSL '%s'", rpsHlslcCmdLine.str().c_str());
+                    LogFmt("\nFailed to compile RPSL '%s'", cmdStr.c_str());
                     return;
                 }
 
@@ -435,7 +442,6 @@ private:
         static_cast<RpslExplorer*>(pUserContext)->Log(buf);
     }
 
-#
     template <typename... TArgs>
     void LogFmt(const char* fmt, TArgs... args)
     {

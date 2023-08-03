@@ -15,7 +15,7 @@ build:
   stage: build
   script:
   - 'del /q ".\external\catch2\scripts\updateDocumentToC.py"'
-  - 'cmake -S ./ -B ./build -G "Visual Studio 16 2019" -A x64 -DRpsEnableVulkanTests=OFF'
+  - 'cmake -S ./ -B ./build -G "Visual Studio 16 2019" -A x64 -DBUILD_INSTALLER=TRUE -DRpsEnableVulkanTests=OFF'
   - 'cmake --build ./build --config Debug --parallel'
   - 'cmake --build ./build --config Release --parallel'
   artifacts:

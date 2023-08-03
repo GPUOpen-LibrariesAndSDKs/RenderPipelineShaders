@@ -18,7 +18,9 @@ static inline int RpsTestRunWindowApp(const RpsAfxRunWindowInfo* pRunInfo)
 
 RpsRpslEntry rpsTestLoadRpslEntryFromDLL(const std::string& moduleName, const std::string& entryName)
 {
-    HMODULE hDLL = ::LoadLibraryA(moduleName.c_str());
+    std::string moduleNameWithEnd = moduleName + ".dll";
+
+    HMODULE hDLL = ::LoadLibraryA(moduleNameWithEnd.c_str());
 
     if (hDLL)
     {

@@ -8,6 +8,10 @@
 option( RPSL_DLL "Build RPSL DLLs" ON )
 option( RpsEnableVulkanTests "Enable Vulkan Test" ON )
 
+if ( NOT RpsEnableVulkan )
+    set( RpsEnableVulkanTests OFF )
+endif ( )
+
 # Adding a test project
 function( AddTestApp AppName TestSrcFile CompileFlags CompileDefinitions LinkFlags IncludeDirectories DependenciesString UseRpslDll UseVkDynLoading AppFolder )
     
@@ -157,7 +161,7 @@ function ( SetupTestApp TestSrc AppFolder AdditionalIncludeDirectiories Addition
             set( IncludeDirectories "${VulkanIncDir};${IncludeDirectories}")
         endif()
         AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "${CompileDefinitions}" "" "${IncludeDirectories}" "${Dependencies}" False False ${AppFolder} )
-        if ( ${RPSL_DLL} AND UseRpslDll AND WIN32 )
+        if ( ${RPSL_DLL} AND UseRpslDll )
             AddTestApp( ${TargetName} ${TestSrc} "${CompileFlags}" "${CompileDefinitions}" "" "${IncludeDirectories}" "${Dependencies}" True False ${AppFolder} )
         endif()
         if( ${UseVkDynLoading} AND TargetName MATCHES "_vk$" )

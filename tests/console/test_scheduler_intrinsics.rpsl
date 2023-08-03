@@ -9,6 +9,7 @@ graphics node Ending(uint id, rtv dst, [readonly(ps)] buffer src0, [readonly(ps)
 compute node  N(uint id, [readwrite(cs)] buffer b);
 node          N_CpuOnly(uint id);
 node          M_WaitsN(uint id, rtv dst, node n);
+node          N_Subprogram(rtv backbuffer, uint offset);
 
 enum TestCases
 {
@@ -180,4 +181,18 @@ export void test_abort(texture backBuffer, int errorCode)
         abort(errorCode);
 
     Ending(0, backBuffer, x, x, x);
+}
+
+export void test_flatten_child(texture backBuffer, uint offset)
+{
+    buffer x = create_buffer(32);
+
+    N(offset, x);
+    N(offset + 1, x);
+}
+
+export void test_flatten_parent(texture backbuffer)
+{
+    N_Subprogram(backbuffer, 0);
+    N_Subprogram(backbuffer, 2);
 }

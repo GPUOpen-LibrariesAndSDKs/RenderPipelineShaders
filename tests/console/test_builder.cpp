@@ -158,8 +158,8 @@ TEST_CASE("BuildGraphUsingCApiCommon")
     graphParams[0].typeInfo         = rpsTypeInfoInitFromType(RpsResourceDesc);
     graphParams[0].flags            = RPS_PARAMETER_FLAG_RESOURCE_BIT;
     graphParams[0].name             = "backBuffer";
-    graphParams[1].typeInfo         = rpsTypeInfoInitFromType(void*);
-    graphParams[1].name             = "pUserContext";
+    graphParams[1].typeInfo         = rpsTypeInfoInitFromType(PrivateUpdateInfo);
+    graphParams[1].name             = "userContext";
 
     RpsRenderGraphSignatureDesc entryInfo = {0};
     entryInfo.name                        = "RenderToTexture_C";

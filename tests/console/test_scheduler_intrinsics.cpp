@@ -17,6 +17,8 @@
 RPS_DECLARE_RPSL_ENTRY(test_scheduler_intrinsics, test_schedule_control);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler_intrinsics, test_schedule_control_nested_atomic_subgraph);
 RPS_DECLARE_RPSL_ENTRY(test_scheduler_intrinsics, test_abort);
+RPS_DECLARE_RPSL_ENTRY(test_scheduler_intrinsics, test_flatten_child);
+RPS_DECLARE_RPSL_ENTRY(test_scheduler_intrinsics, test_flatten_parent);
 
 struct NodeOrderChecker
 {
@@ -135,6 +137,13 @@ public:
     void DisableValidation()
     {
         m_pendingValidation = false;
+    }
+
+    void BindSubprogram(const char* name, RpsSubprogram hChildProgram)
+    {
+        RpsSubprogram hMainProgram = rpsRenderGraphGetMainEntry(m_renderGraph);
+
+        rpsProgramBindNodeSubprogram(hMainProgram, name, hChildProgram);
     }
 
 private:
@@ -371,7 +380,40 @@ TEST_CASE("TestSchedulerIntrinsics_Subgraph")
                              assertEqualRange(actualSeq, 25, 29);
                          });
 
+    // Checks if nodes from different subgraphs are scheduled across subgraph boundaries
+    orderChecker.CreateRenderGraph(rpsTestLoadRpslEntry(test_scheduler_intrinsics, test_flatten_parent));
+
+    RpsRenderGraphCreateInfo renderGraphCreateInfo            = {};
+    renderGraphCreateInfo.mainEntryCreateInfo.hRpslEntryPoint =
+        rpsTestLoadRpslEntry(test_scheduler_intrinsics, test_flatten_child);
+    
+    RpsRenderGraph subgraph = RPS_NULL_HANDLE;
+
+    REQUIRE_RPS_OK(rpsRenderGraphCreate(device, &renderGraphCreateInfo, &subgraph));
+
+    auto hSubEntry = rpsRenderGraphGetMainEntry(subgraph);
+    REQUIRE_RPS_OK(rpsProgramBindNode(hSubEntry, nullptr, &NodeOrderChecker::CmdCallback, &orderChecker));
+
+    orderChecker.BindSubprogram("N_Subprogram", hSubEntry);
+
+    orderChecker.Execute(args,
+                         1,
+                         RPS_SCHEDULE_DISABLE_DEAD_CODE_ELIMINATION_BIT,
+                         RPS_DIAGNOSTIC_ENABLE_ALL,
+                         [&](const std::vector<uint32_t>& actualSeq) {
+                              
+                             //0, initial access in subgraph 0, a_0
+                             //1, second  access in subgraph 0, b_0
+                             //2, initial access in subgraph 1, a_1
+                             //3, second  access in subgraph 1, b_1
+                             
+                             //Reordering the initial order [a_0, b_0, a_1, b_1] into [a_0, a_1, b_0, b_1] shows how we are reordering for transition batching even across subgraph boundaries.
+
+                             REQUIRE(actualSeq == std::vector<uint32_t>({0, 2, 1, 3}));
+                         });
+
     orderChecker.DestroyRenderGraph();
+    rpsRenderGraphDestroy(subgraph);
 
     RPS_TEST_MALLOC_COUNTER_EQUAL_CURRENT(PostCreateDevice);
 
