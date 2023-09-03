@@ -216,6 +216,7 @@ protected:
             const RpsRuntimeResource* argResources[2] = {backBufferResources};
 
             uint32_t argDataCount = 1;
+            float time;
 
             float time = 0.f;
 
