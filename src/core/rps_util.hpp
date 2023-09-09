@@ -32,7 +32,7 @@ static inline uint32_t rpsCountBits(uint32_t value)
 {
 #ifdef RPS_HAS_POPCNT
     return __popcnt(value);
-#elif RPS_HAS_BUILTIN_POP_COUNT
+#elif defined(RPS_HAS_BUILTIN_POPCOUNT)
     return (uint32_t)__builtin_popcount(value);
 #else
     uint32_t a = (value & 0x55555555u) + ((value >> 1u) & 0x55555555u);
@@ -1312,7 +1312,6 @@ namespace rps
         }
 
     private:
-
         template <typename TFunc, typename TSelf>
         static void IterateRange(TSelf& self, size_t beginIndex, size_t endIndex, TFunc elementHandler)
         {
