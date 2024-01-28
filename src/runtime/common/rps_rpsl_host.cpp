@@ -179,9 +179,11 @@ namespace rps
             pResDesc->buffer.sizeInBytesHi = height;
         }
 
-        const uint32_t stableResId =
+        const TResult<uint32_t> stableResId =
             m_pGraphBuilder->GetCurrentProgram()
                 ->m_persistentIndexGenerator.Generate<ProgramInstance::PERSISTENT_INDEX_KIND_RESOURCE_ID>(id);
+
+        RPS_V_RETURN(stableResId.Result());
 
         RPS_V_RETURN(m_pGraphBuilder->DeclareResource(stableResId, pResDesc, {}, pOutResourceId));
 
