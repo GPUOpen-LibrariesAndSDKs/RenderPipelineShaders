@@ -372,6 +372,17 @@ impl Buffer {
         }
     }
 
+    pub fn offset(&self, offset: u64) -> Result<Buffer, crate::Error> {
+        if offset <= self.size_in_bytes {
+            let mut new_buf = *self;
+            new_buf.offset += offset;
+            new_buf.size_in_bytes = self.size_in_bytes - new_buf.offset;
+            Ok(new_buf)
+        } else {
+            Err(crate::Error::IndexOutOfRange)
+        }
+    }
+
     pub fn format(&self, fmt: RpsFormat) -> Buffer {
         Buffer {
             view_format: fmt,
@@ -420,19 +431,19 @@ macro_rules! create_buffer {
             let mut temporal_layers = 1u32;
             let mut flags = $crate::ResourceFlags::NONE;
             let mut id = u32::MAX;
-            $crate::create_buffer!(@ARGS (id, flags, desc) $(,$($tail)*)?);
+            $crate::create_buffer!(@ARGS (id, flags, temporal_layers) $(,$($tail)*)?);
             $crate::Buffer::new($w, temporal_layers, flags, id)
         }
     };
     (@ARGS ($id:ident, $flags:ident, $temporal_layers:ident), flags: $value:expr $(,$($tail:tt)*)?) => {
         $flags = $value;
-        $crate::create_buffer!(@ARGS ($id, $flags, $desc) $(,$($tail)*)?);
+        $crate::create_buffer!(@ARGS ($id, $flags, $temporal_layers) $(,$($tail)*)?);
     };
     (@ARGS ($id:ident, $flags:ident, $temporal_layers:ident), temporal_layers:$tmp:expr $(,$($tail:tt)*)?) => {
         $temporal_layers = $tmp;
-        $crate::create_buffer!(@ARGS ($id, $flags, $desc) $(,$($tail)*)?);
+        $crate::create_buffer!(@ARGS ($id, $flags, $temporal_layers) $(,$($tail)*)?);
     };
-    (@ARGS ($id:ident, $flags:ident, $desc:ident), ___id: $value:literal) => {
+    (@ARGS ($id:ident, $flags:ident, $temporal_layers:ident), ___id: $value:literal) => {
         $id = $value;
     }
 }
@@ -748,6 +759,13 @@ impl Texture {
             ..*self
         }
     }
+
+    pub fn cubemap(&self) -> Self {
+        Self {
+            flags: self.flags | ResourceViewFlags::CUBEMAP_BIT,
+            ..*self
+        }
+    }
 }
 
 impl Resource for Texture {
@@ -764,7 +782,7 @@ impl Resource for Texture {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, macro_utils::RpsFFIType)]
 pub struct RpsViewport {
     pub x: f32,
     pub y: f32,
@@ -784,6 +802,18 @@ impl RpsViewport {
     pub fn new_size(w: f32, h: f32) -> Self {
         Self {
             x: 0.0, y: 0.0, width: w, height: h, min_z: 0.0, max_z: 1.0
+        }
+    }
+
+    pub fn new_rect(x: f32, y: f32, w: f32, h: f32) -> Self {
+        Self {
+            x: x, y: y, width: w, height: h, min_z: 0.0, max_z: 1.0
+        }
+    }
+
+    pub fn new_rect_u(x: u32, y: u32, w: u32, h: u32) -> Self {
+        Self {
+            x: x as f32, y: y as f32, width: w as f32, height: h as f32, min_z: 0.0, max_z: 1.0
         }
     }
 }
@@ -886,3 +916,46 @@ impl_rps_built_in_type_info!(f32, 4, RPS_TYPE_BUILT_IN_FLOAT32);
 impl_rps_built_in_type_info!(f64, 8, RPS_TYPE_BUILT_IN_FLOAT64);
 impl_rps_built_in_type_info!(&Texture, 8, RPS_TYPE_IMAGE_VIEW);
 impl_rps_built_in_type_info!(&Buffer, 8, RPS_TYPE_BUFFER_VIEW);
+
+
+pub const fn uint4(x: u32, y: u32, z: u32, w: u32) -> glam::UVec4 {
+    glam::uvec4(x,y,z,w)
+}
+
+pub const fn uint3(x: u32, y: u32, z: u32) -> glam::UVec3 {
+    glam::uvec3(x,y,z)
+}
+
+pub const fn float4(x: f32, y: f32, z: f32, w: f32) -> glam::Vec4 {
+    glam::vec4(x,y,z,w)
+}
+
+pub const fn float3(x: f32, y: f32, z: f32) -> glam::Vec3 {
+    glam::vec3(x,y,z)
+}
+
+/// Impl RpsTypeInfoTrait trait for given types
+#[macro_export]
+macro_rules! impl_rps_type_info_trait {
+    ($($type_name:ty),*) => {
+        $(
+            impl $crate::rpsl_runtime::RpsTypeInfoTrait for & $type_name {
+                const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
+                    size: std::mem::size_of::<$type_name>() as u16,
+                    id: $crate::rpsl_runtime::RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
+                };
+            
+                fn to_c_ptr(&self) -> *const c_void {
+                    (*self) as *const _ as *const c_void
+                }
+            }
+
+            impl $crate::rpsl_runtime::RpsTypeInfoTrait for $type_name {
+                const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
+                    size: std::mem::size_of::<$type_name>() as u16,
+                    id: $crate::rpsl_runtime::RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
+                };
+            }
+        )*
+    }
+}

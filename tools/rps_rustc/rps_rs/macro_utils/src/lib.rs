@@ -23,6 +23,11 @@ struct RenderGraphEntryProcessor {
     num_blocks: u32,
 }
 
+enum BlockUsage {
+    Loop,
+    FnCall,
+}
+
 impl RenderGraphEntryProcessor {
     fn try_name_resource_on_assign(&self, e: syn::ExprAssign) -> syn::ExprAssign {
 
@@ -84,7 +89,7 @@ impl RenderGraphEntryProcessor {
         body.stmts.insert(0, call_loop_iterate);
     }
 
-    fn loop_end(&mut self, e: Expr) -> Expr {
+    fn loop_end(&mut self, e: Expr, usage: BlockUsage) -> Expr {
         let BlockInfo {
             id,
             resource_count,
@@ -99,11 +104,19 @@ impl RenderGraphEntryProcessor {
             &format!("_loop_guard_{}", id),
             e.span());
 
-        let new_block = parse_quote!{
-            {
-                let #guard_ident = rps_rs::LoopGuard::new(#id, #resource_count, #node_count, #local_loop_index, #child_block_count, #parent_id);
-                #e
-            }
+        let new_block = match usage {
+            BlockUsage::Loop => parse_quote!{
+                {
+                    let #guard_ident = rps_rs::LoopGuard::new(#id, #resource_count, #node_count, #local_loop_index, #child_block_count, #parent_id);
+                    #e
+                }
+            },
+            BlockUsage::FnCall => parse_quote!{
+                {
+                    let #guard_ident = rps_rs::FunctionCallIdGuard::new(#parent_id, #id, #local_loop_index);
+                    #e
+                }
+            },
         };
 
         Expr::Block(new_block)
@@ -124,6 +137,7 @@ impl Fold for RenderGraphEntryProcessor {
     fn fold_expr(&mut self, e: Expr) -> Expr {
         match e {
             Expr::Call(mut e) => {
+                let mut is_node_call = false;
                 let span = e.span();
                 if let Expr::Path(func_path) = e.func.as_mut() {
 
@@ -131,7 +145,7 @@ impl Fold for RenderGraphEntryProcessor {
                         Some(first_path_seg) => first_path_seg.ident == "ext",
                         _ => false,
                     };
-                    let is_node_call = is_ext_node_call || match func_path.path.segments.last() {
+                    is_node_call = is_ext_node_call || match func_path.path.segments.last() {
                         Some(last_path_seg) => self.nodes.contains_key(&last_path_seg.ident),
                         _ => false,
                     };
@@ -175,7 +189,15 @@ impl Fold for RenderGraphEntryProcessor {
                         _ => {}
                     };
                 }
-                fold::fold_expr(self, Expr::Call(e))
+
+                let mut e = fold::fold_expr(self, Expr::Call(e));
+
+                if !is_node_call {
+                    self.loop_begin();
+                    e = self.loop_end(e, BlockUsage::FnCall);
+                }
+
+                e
             },
 
             Expr::Macro(mut e) => {
@@ -225,21 +247,21 @@ impl Fold for RenderGraphEntryProcessor {
                 self.loop_begin();
                 let mut e = fold::fold_expr_for_loop(self, e);
                 self.loop_iterate(&mut e.body);
-                self.loop_end(Expr::ForLoop(e))
+                self.loop_end(Expr::ForLoop(e), BlockUsage::Loop)
             },
 
             Expr::While(e) => {
                 self.loop_begin();
                 let mut e = fold::fold_expr_while(self, e);
                 self.loop_iterate(&mut e.body);
-                self.loop_end(Expr::While(e))
+                self.loop_end(Expr::While(e), BlockUsage::Loop)
             },
 
             Expr::Loop(e) => {
                 self.loop_begin();
                 let mut e = fold::fold_expr_loop(self, e);
                 self.loop_iterate(&mut e.body);
-                self.loop_end(Expr::Loop(e))
+                self.loop_end(Expr::Loop(e), BlockUsage::Loop)
             },
 
             _ => fold::fold_expr(self, e),
@@ -343,8 +365,12 @@ fn emit_wrapper_arg_forwarding_stmts(
     }
 }
 
-#[proc_macro_attribute]
-pub fn render_graph_entry(args: TokenStream, input: TokenStream) -> TokenStream {
+enum EntryType {
+    Export,
+    NonExport,
+}
+
+fn render_graph_entry_impl(entry_type: EntryType, args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
 
     let sig_span = input.sig.span();
@@ -367,55 +393,73 @@ pub fn render_graph_entry(args: TokenStream, input: TokenStream) -> TokenStream 
             #resource_count, #node_count, #child_block_count);
     });
 
-    let wrapper_fn_name = syn::Ident::new(
-        &format!("entry_wrapper_{}", output.sig.ident),
-        sig_span);
+    match entry_type {
+        EntryType::Export => {
 
-    let mut wrapper_output: ItemFn = parse_quote!(
-        pub extern "C" fn #wrapper_fn_name ( num_args: u32, pp_args: *const *const core::ffi::c_void, flags: u32 ) {
-            let mut res_offset = 0u32;
-            let pp_args = unsafe {
-                core::slice::from_raw_parts(pp_args, num_args as usize)
-            };
-        }
-    );
+            let wrapper_fn_name = syn::Ident::new(
+                &format!("entry_wrapper_{}", output.sig.ident),
+                sig_span);
 
-    let mut arg_list = Punctuated::<Ident, Token![,]>::new();
-    let mut arg_index = 0;
+            let mut wrapper_output: ItemFn = parse_quote!(
+                pub unsafe extern "C" fn #wrapper_fn_name ( num_args: u32, pp_args: *const *const core::ffi::c_void, flags: u32 ) {
+                    let mut res_offset = 0u32;
+                    let pp_args = core::slice::from_raw_parts(pp_args, num_args as usize);
+                }
+            );
 
-    for arg in &output.sig.inputs {
+            let mut arg_list = Punctuated::<Ident, Token![,]>::new();
+            let mut arg_index = 0;
 
-        let mut converted = false;
+            for arg in &output.sig.inputs {
 
-        if let FnArg::Typed(arg) = arg {
-            if let syn::Pat::Ident(arg_name) = arg.pat.as_ref() {
-                emit_wrapper_arg_forwarding_stmts(
-                    &mut wrapper_output.block.stmts,
-                    &arg_name.ident,
-                    &arg.ty,
-                    &None,
-                    arg_index);
+                let mut converted = false;
 
-                arg_list.push(arg_name.ident.clone());
+                if let FnArg::Typed(arg) = arg {
+                    if let syn::Pat::Ident(arg_name) = arg.pat.as_ref() {
+                        emit_wrapper_arg_forwarding_stmts(
+                            &mut wrapper_output.block.stmts,
+                            &arg_name.ident,
+                            &arg.ty,
+                            &None,
+                            arg_index);
 
-                converted = true;
+                        arg_list.push(arg_name.ident.clone());
+
+                        converted = true;
+                    }
+                }
+
+                if !converted {
+                    wrapper_output.block.stmts.push(parse_quote!( panic!("Failed to convert arg {}", stringify!(#arg)) ));
+                }
+
+                arg_index += 1;
             }
-        }
 
-        if !converted {
-            wrapper_output.block.stmts.push(parse_quote!( panic!("Failed to convert arg {}", stringify!(#arg)) ));
-        }
+            let entry_fn_name = output.sig.ident.clone();
+            wrapper_output.block.stmts.push(parse_quote!( Self:: #entry_fn_name ( #arg_list ); ));
 
-        arg_index += 1;
+            TokenStream::from(quote!{
+                #output
+                #wrapper_output
+            })
+        },
+        EntryType::NonExport => {
+            TokenStream::from(quote!{
+                #output
+            })
+        }
     }
+}
 
-    let entry_fn_name = output.sig.ident.clone();
-    wrapper_output.block.stmts.push(parse_quote!( Self:: #entry_fn_name ( #arg_list ); ));
+#[proc_macro_attribute]
+pub fn render_graph_export_entry(args: TokenStream, input: TokenStream) -> TokenStream {
+    render_graph_entry_impl(EntryType::Export, args, input)
+}
 
-    TokenStream::from(quote!{
-        #output
-        #wrapper_output
-    })
+#[proc_macro_attribute]
+pub fn render_graph_non_export_entry(args: TokenStream, input: TokenStream) -> TokenStream {
+    render_graph_entry_impl(EntryType::NonExport,args, input)
 }
 
 struct RenderGraphNodeFnProcessor

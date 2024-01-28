@@ -13,6 +13,12 @@ name = "cargo_rpslc"
 version = "0.1.0"
 
 [[package]]
+name = "glam"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
+
+[[package]]
 name = "linkme"
 version = "0.3.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -69,6 +75,7 @@ name = "rps_rs"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "glam",
  "linkme",
  "macro_utils",
  "paste",
