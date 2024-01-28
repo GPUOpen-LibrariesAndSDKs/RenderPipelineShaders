@@ -388,48 +388,19 @@ macro_rules! declare_nodes_impl {
         )*)
         ()
     ) => {
-        #[allow(unused, non_camel_case_types, non_snake_case)]
-        $rg_vis struct $name {
-        }
-        impl $name {
-            #[allow(unused)]
-            pub const CNODE_DESCS: &'static [$crate::CRpsNodeDesc] = &[
-                $({
-                    const PARAM_DESCS: &'static [$crate::CRpsParameterDesc] = &[
-                        $( $crate::CRpsParameterDesc {
-                            type_info: $crate::access::get_rps_ffi_type_info::<$arg_type>(),
-                            array_size: $crate::access::get_rps_ffi_array_len::<$arg_type>(),
-                            attr: (&$crate::access::CRpsParamAttr::new(
-                                $crate::convert_access_attr!(@access_attr_list $([$access_attr $(( $($access_flags),* ))?])*),
-                                stringify!($($arg_semantic)?)
-                            )) as *const $crate::access::CRpsParamAttr,
-                            name: ($crate::static_cstr!(stringify!($arg_name))).as_ptr(),
-                            flags: $crate::access::get_rps_ffi_param_flags::<$arg_type>(),
-                        }),*
-                    ];
-
-                    $crate::CRpsNodeDesc{
-                        flags: $crate::parse_node_decl_flags!($($node_type)?),
-                        num_params: PARAM_DESCS.len() as u32,
-                        p_param_descs: $crate::CRpsParameterDescConstPtr((&PARAM_DESCS).as_ptr()),
-                        name: $crate::CStrPtr(($crate::static_cstr!(stringify!($fn_name))).as_ptr()),
-                    }
-                },)*
-            ];
-            $(
-                paste::item! {
-                    #[allow(unused, non_snake_case)]
-                    #[macro_utils::render_graph_node_fn]
-                    $node_vis fn $fn_name ($( $arg_name : $arg_type ),* ) -> $crate::Node {
-                        use $crate::rpsl_runtime::RpsTypeInfoTrait;
-                        let arg_ptrs = unsafe {
-                            [$(($arg_name).to_c_ptr(),)*]
-                        };
-                        unsafe { $crate::call_node([<$name:upper _ $fn_name:upper _NODE_ID>], local_node_id, &arg_ptrs) }
-                    }
+        $(
+            paste::item! {
+                #[allow(unused, non_snake_case)]
+                #[macro_utils::render_graph_node_fn]
+                $node_vis fn $fn_name ($( $arg_name : $arg_type ),* ) -> $crate::Node {
+                    use $crate::rpsl_runtime::RpsTypeInfoTrait;
+                    let arg_ptrs = unsafe {
+                        [$(($arg_name).to_c_ptr(),)*]
+                    };
+                    unsafe { $crate::call_node([<$name:upper _ $fn_name:upper _NODE_ID>], local_node_id, &arg_ptrs) }
                 }
-            )*
-        }
+            }
+        )*
 
         $(
             paste::item! {
@@ -466,7 +437,7 @@ macro_rules! declare_nodes_impl {
                             if ([<$name:upper _ $fn_name:upper _NODE_ID>] != u32::MAX) &&
                                ([<$name:upper _ $fn_name:upper _NODE_ID>] != id) {
                                 panic!("Already set node id for '{}'",
-                                    std::concat!(module_path!(), "::", stringify!($name), "::", stringify!($fn_name)))
+                                    std::concat!(module_path!(), "::", stringify!($fn_name)))
                             }
                             [<$name:upper _ $fn_name:upper _NODE_ID>] = id;
                         }
@@ -556,12 +527,8 @@ macro_rules! expand_entry_arg_ptrs {
 macro_rules! define_exports_impl {
     // Finalize exports:
     (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)) => {
-        impl $name {
-            $($export_fns)*
-        }
-
+        $($export_fns)*
         $($export_decls)*
-
         $($export_c_entries)*
     };
 
@@ -590,7 +557,7 @@ macro_rules! define_exports_impl {
                     $crate::CRpslEntry
                     {
                         name: $crate::CStrPtr(($crate::static_cstr!(stringify!($fn_name))).as_ptr()),
-                        pfn_entry: paste::item!{ $name :: [<entry_wrapper_ $fn_name>] },
+                        pfn_entry: paste::item!{ [<entry_wrapper_ $fn_name>] },
                         p_param_descs: $crate::RawConstPtr::<$crate::CRpsParameterDesc>(PARAM_DESCS.as_ptr()),
                         p_node_decls: $crate::RawConstPtr::<$crate::CRpsNodeDesc>(std::ptr::null()),
                         num_params: PARAM_DESCS.len() as u32,
@@ -653,38 +620,41 @@ macro_rules! define_exports_impl {
 #[macro_export]
 #[allow(unused_macros)]
 macro_rules! render_graph {
-    ([[$rg_vis:vis $rg_name:ident]] $($t:tt)*) => {
-        $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () (
-            // TODO: Stick built-in nodes here until we support importing nodes from a different module.
-            [graphics] node clear_color( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
-            [graphics] node clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
-            [graphics] node clear_depth_stencil( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
-            [graphics] node clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil, num_rects: u32, rects: $crate::IVec4 );
-            [compute] node clear_texture( [writeonly(clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, data: $crate::UVec4 );
-            [compute] node clear_texture_regions( [readwrite(clear)] t: &$crate::Texture, data : $crate::UVec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
-            [compute] node clear_buffer( [writeonly(clear)] b: &$crate::Buffer, option: $crate::RpsClearFlags, data: $crate::UVec4 );
-            [copy] node copy_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
-            [copy] node copy_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_offset: u64, [readonly(copy)] src: &$crate::Buffer, src_offset: u64, size: u64 );
-            [copy] node copy_texture_to_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
-            [copy] node copy_buffer_to_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Buffer, src_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, src_offset: $crate::UVec3, extent: $crate::UVec3 );
-            [graphics] node resolve( [readwrite(resolve)] dst: &$crate::Texture, dst_offset: $crate::UVec2, [readonly(resolve)] src: &$crate::Texture, src_offset: $crate::UVec2, extent: $crate::UVec2, resolve_mode: $crate::RpsResolveMode );
-            $($t)*
-        )}
-        $crate::define_exports_impl!{@exports [$rg_name] (0)
-        (
-            clear_color,
-            clear_color_regions,
-            clear_depth_stencil,
-            clear_depth_stencil_regions,
-            clear_texture,
-            clear_texture_regions,
-            clear_buffer,
-            copy_texture,
-            copy_buffer,
-            copy_texture_to_buffer,
-            copy_buffer_to_texture,
-            resolve,
-        ) () () () $($t)*}
+    ($rg_vis:vis mod $rg_name:ident { $($t:tt)* }) => {
+        $rg_vis mod $rg_name {
+            use $crate::{*};
+            $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () (
+                // TODO: Stick built-in nodes here until we support importing nodes from a different module.
+                [graphics] node clear_color( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
+                [graphics] node clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
+                [graphics] node clear_depth_stencil( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
+                [graphics] node clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil, num_rects: u32, rects: $crate::IVec4 );
+                [compute] node clear_texture( [writeonly(clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, data: $crate::UVec4 );
+                [compute] node clear_texture_regions( [readwrite(clear)] t: &$crate::Texture, data : $crate::UVec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
+                [compute] node clear_buffer( [writeonly(clear)] b: &$crate::Buffer, option: $crate::RpsClearFlags, data: $crate::UVec4 );
+                [copy] node copy_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+                [copy] node copy_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_offset: u64, [readonly(copy)] src: &$crate::Buffer, src_offset: u64, size: u64 );
+                [copy] node copy_texture_to_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+                [copy] node copy_buffer_to_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Buffer, src_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+                [graphics] node resolve( [readwrite(resolve)] dst: &$crate::Texture, dst_offset: $crate::UVec2, [readonly(resolve)] src: &$crate::Texture, src_offset: $crate::UVec2, extent: $crate::UVec2, resolve_mode: $crate::RpsResolveMode );
+                $($t)*
+            )}
+            $crate::define_exports_impl!{@exports [$rg_name] (0)
+            (
+                clear_color,
+                clear_color_regions,
+                clear_depth_stencil,
+                clear_depth_stencil_regions,
+                clear_texture,
+                clear_texture_regions,
+                clear_buffer,
+                copy_texture,
+                copy_buffer,
+                copy_texture_to_buffer,
+                copy_buffer_to_texture,
+                resolve,
+            ) () () () $($t)*}
+        }
     };
     () => {}
 }
