@@ -138,7 +138,6 @@ impl Fold for RenderGraphEntryProcessor {
         match e {
             Expr::Call(mut e) => {
                 let mut is_node_call = false;
-                let span = e.span();
                 if let Expr::Path(func_path) = e.func.as_mut() {
 
                     let is_ext_node_call = match func_path.path.segments.first() {
@@ -158,11 +157,6 @@ impl Fold for RenderGraphEntryProcessor {
                             segments.into_iter().skip(1).for_each(|s|
                                 func_path.path.segments.push(s)
                             );
-                        }
-                        else if func_path.path.segments.len() == 1 {
-                            // Add 'Self::' to self node calls
-                            let self_ident = Ident::new("Self", span);
-                            func_path.path.segments.insert(0, PathSegment::from(self_ident));
                         }
 
                         let node_count = self.block_stack.last().unwrap().node_count;
@@ -437,7 +431,7 @@ fn render_graph_entry_impl(entry_type: EntryType, args: TokenStream, input: Toke
             }
 
             let entry_fn_name = output.sig.ident.clone();
-            wrapper_output.block.stmts.push(parse_quote!( Self:: #entry_fn_name ( #arg_list ); ));
+            wrapper_output.block.stmts.push(parse_quote!( #entry_fn_name ( #arg_list ); ));
 
             TokenStream::from(quote!{
                 #output
