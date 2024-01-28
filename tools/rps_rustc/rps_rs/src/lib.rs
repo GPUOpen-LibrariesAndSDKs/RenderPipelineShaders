@@ -12,10 +12,19 @@ pub use rps_types::{*};
 #[allow(unused_imports)]
 pub use built_in_nodes::{*};
 
+pub use glam::{
+    Vec2, Vec3, Vec4, IVec2, IVec3, IVec4, UVec2, UVec3, UVec4,
+    vec2, vec3, vec4, ivec2, ivec3, ivec4, uvec2, uvec3, uvec4};
+
 use rpsl_runtime::CRpsTypeInfo;
+
+impl_rps_type_info_trait!{
+    Vec2, Vec3, Vec4, IVec2, IVec3, IVec4, UVec2, UVec3, UVec4
+}
 
 #[non_exhaustive]
 #[repr(u32)]
+#[derive(Clone, Copy, Debug)]
 pub enum Error {
     InvalidArgs,
     IndexOutOfRange,
@@ -75,7 +84,7 @@ pub struct CRpsNodeDesc
     pub name: CStrPtr,
 }
 
-pub type CFnRpslEntry = extern "C" fn(
+pub type CFnRpslEntry = unsafe extern "C" fn(
     num_args: u32,
     pp_args: *const *const c_void,
     flags: u32);
@@ -184,26 +193,104 @@ pub fn loop_iterate(block_index: u32, _iter_index: u32) {
     }
 }
 
-pub struct FunctionMarkerGuard;
+#[derive(Copy, Clone)]
+struct CallIds {
+    pub parent_id: u32,
+    pub block_id: u32,
+    pub local_index: u32,
+}
+
+pub struct FunctionCallIdGuard {
+    outer_call_ids: Option<CallIds>,
+}
+
+impl FunctionCallIdGuard {
+    pub fn new(parent_id: u32, block_id: u32, local_index: u32) -> Self {
+        Self {
+            outer_call_ids: FunctionMarkerGuard::set_call_ids(
+                Some(CallIds{parent_id, block_id, local_index})),
+        }
+    }
+}
+
+impl Drop for FunctionCallIdGuard {
+    fn drop(&mut self) {
+        FunctionMarkerGuard::set_call_ids(self.outer_call_ids);
+    }
+}
+
+#[doc(hidden)]
+pub struct FunctionMarkerGuard {
+    call_ids: Option<CallIds>,
+}
 
 impl FunctionMarkerGuard {
-    pub fn new(resource_count: u32, node_count: u32, children_cound: u32) -> FunctionMarkerGuard {
-        unsafe {
-            crate::rpsl_runtime::callbacks::rpsl_block_marker(
-                BlockMarker::FUNCTION_INFO,
-                0, resource_count,
-                node_count,
-                0,
-                children_cound,
-                u32::MAX);
+
+    std::thread_local! {
+        static LOCAL_CALL_INFO : core::cell::Cell<Option<CallIds>> = const { core::cell::Cell::new(None) };
+    }
+
+    pub(crate) fn set_call_ids(value: Option<CallIds>) -> Option<CallIds> {
+        Self::LOCAL_CALL_INFO.replace(value)
+    }
+
+    pub fn new(resource_count: u32, node_count: u32, children_count: u32) -> FunctionMarkerGuard {
+        let call_ids = Self::LOCAL_CALL_INFO.get();
+
+        if let Some(call_ids) = &call_ids {
+            unsafe {
+                // Use a pair of loop begin/iteration markers to mimic child blocks
+                // for function calls for now, until we add proper end_function markers in runtime.
+                crate::rpsl_runtime::callbacks::rpsl_block_marker(
+                    BlockMarker::LOOP_BEGIN,
+                    call_ids.block_id,
+                    resource_count,
+                    node_count,
+                    call_ids.local_index,
+                    children_count,
+                    call_ids.parent_id);
+
+                crate::rpsl_runtime::callbacks::rpsl_block_marker(
+                    BlockMarker::LOOP_ITERATION,
+                    call_ids.block_id,
+                    0,
+                    0,
+                    0,
+                    0,
+                    u32::MAX);
+            }
+        } else {
+            unsafe {
+                crate::rpsl_runtime::callbacks::rpsl_block_marker(
+                    BlockMarker::FUNCTION_INFO,
+                    0,
+                    resource_count,
+                    node_count,
+                    u32::MAX,
+                    children_count,
+                    u32::MAX);
+            }
         }
-        FunctionMarkerGuard{}
+
+        FunctionMarkerGuard{call_ids}
     }
 }
 
 impl Drop for FunctionMarkerGuard {
     fn drop(&mut self) {
         // Reserved for function_end marker
+        if let Some(call_ids) = self.call_ids {
+            unsafe {
+                crate::rpsl_runtime::callbacks::rpsl_block_marker(
+                    BlockMarker::LOOP_END,
+                    call_ids.block_id,
+                    0,
+                    0,
+                    0,
+                    0,
+                    u32::MAX);
+            }
+        }
     }
 }
 
@@ -279,7 +366,9 @@ macro_rules! parse_node_decl_flag {
 macro_rules! parse_node_decl_flags {
 
     ($item:ident $($tail:ident)*) => {
-        $crate::access::CRpsNodeDeclFlags::from_bits_truncate($crate::parse_node_decl_flag!($item).bits() | $crate::parse_node_decl_flags!($($tail)*).bits())
+        $crate::access::CRpsNodeDeclFlags::from_bits_truncate(
+            $crate::parse_node_decl_flag!($item).bits() |
+            $crate::parse_node_decl_flags!($($tail)*).bits())
     };
     () => { $crate::access::CRpsNodeDeclFlags::NONE };
 }
@@ -396,11 +485,11 @@ macro_rules! declare_nodes_impl {
                 $arg_name:ident : $arg_type:ty
                 $(: $arg_semantic:ident)? ),* ); )*)
         (
-            export $curr_fn_name:ident (
+            $fn_vis:vis $(export)? fn $curr_fn_name:ident (
                 $( $([$curr_access_attr:ident $(( $($curr_access_flags:ident),* ))?])*
                 $curr_arg_name:ident : $curr_arg_type:ty
                 $(: $curr_arg_semantic:ident)? ),*
-            ) $body:block
+            ) $(-> $ret:ty)? $body:block
 
             $($t:tt)*
         )
@@ -423,7 +512,7 @@ macro_rules! declare_nodes_impl {
                 $arg_name:ident : $arg_type:ty $(: $arg_semantic:ident)? ),*
             ); )*)
         (
-            $curr_node_vis:vis $([$curr_node_type:ident])? $curr_fn_name:ident(
+            $curr_node_vis:vis $([$curr_node_type:ident])? node $curr_fn_name:ident(
                 $( $([$curr_access_attr:ident $(( $($curr_access_flags:ident),* ))?])*
                 $curr_arg_name:ident : $curr_arg_type:ty $(: $curr_arg_semantic:ident)? ),*
             );
@@ -477,7 +566,7 @@ macro_rules! define_exports_impl {
     };
 
     (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)
-        export $fn_name:ident ( $( $([$access_attr:ident $(( $($access_flags:ident),* ))?])* $arg_name:ident : $arg_type:ty ),* ) $body:block
+        export fn $fn_name:ident ( $( $([$access_attr:ident $(( $($access_flags:ident),* ))?])* $arg_name:ident : $arg_type:ty ),* ) $body:block
         $($t:tt)*
     ) => {
         $crate::define_exports_impl!{@exports [$name] ($num_entries + 1) ($($node_names,)*) (
@@ -497,7 +586,7 @@ macro_rules! define_exports_impl {
                         name: ($crate::static_cstr!(stringify!($arg_name))).as_ptr(),
                         flags: $crate::access::get_rps_ffi_param_flags::<$arg_type>(),
                     }),* ];
-    
+
                     $crate::CRpslEntry
                     {
                         name: $crate::CStrPtr(($crate::static_cstr!(stringify!($fn_name))).as_ptr()),
@@ -514,7 +603,7 @@ macro_rules! define_exports_impl {
 
             // Original export entry with argument attributes removed:
             #[allow(unused)]
-            #[macro_utils::render_graph_entry($($node_names,)*)]
+            #[macro_utils::render_graph_export_entry($($node_names,)*)]
             fn $fn_name ( $($arg_name : $arg_type),* ) $body
         )(
             $($export_c_entries)*
@@ -534,10 +623,24 @@ macro_rules! define_exports_impl {
         ) $($t)*}
     };
 
+    // Non-export function:
+    (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)
+        fn $fn_name:ident ( $( $arg_name:ident : $arg_type:ty ),* ) $(-> $ret:ty)? $body:block
+        $($t:tt)*
+    ) => {
+        $crate::define_exports_impl!{@exports [$name] ($num_entries + 1) ($($node_names,)*) ($($export_decls)*) (
+            $($export_fns)*
+
+            #[allow(unused)]
+            #[macro_utils::render_graph_non_export_entry($($node_names,)*)]
+            fn $fn_name ( $($arg_name : $arg_type),* ) $(-> $ret)? $body
+        ) ($($export_c_entries)*) $($t)*}
+    };
+
     // Exclude node decls from export entries
     (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)
         // Ignore pattern:
-        $curr_node_vis:vis $([$curr_node_type:ident])? $curr_fn_name:ident(
+        $curr_node_vis:vis $([$curr_node_type:ident])? node $curr_fn_name:ident(
             $( $([$curr_access_attr:ident $(( $($curr_access_flags:ident),* ))?])*
             $curr_arg_name:ident : $curr_arg_type:ty $(: $curr_arg_semantic:ident)? ),*
         );
@@ -553,18 +656,18 @@ macro_rules! render_graph {
     ([[$rg_vis:vis $rg_name:ident]] $($t:tt)*) => {
         $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () (
             // TODO: Stick built-in nodes here until we support importing nodes from a different module.
-            [graphics] clear_color( [readwrite(render_target, clear)] t: &$crate::Texture, data : &[f32;4] : SV_ClearColor );
-            [graphics] clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : &[f32;4] : SV_ClearColor, num_rects: u32, rects: &[i32;4] );
-            [graphics] clear_depth_stencil( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
-            [graphics] clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil, num_rects: u32, rects: &[i32;4] );
-            [compute] clear_texture( [writeonly(clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, data: &[u32;4] );
-            [compute] clear_texture_regions( [readwrite(clear)] t: &$crate::Texture, data : &[u32;4] : SV_ClearColor, num_rects: u32, rects: &[i32;4] );
-            [compute] clear_buffer( [writeonly(clear)] b: &$crate::Buffer, option: $crate::RpsClearFlags, data: &[u32;4] );
-            [copy] copy_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: &[u32;3], [readonly(copy)] src: &$crate::Texture, src_offset: &[u32;3], extent: &[u32;3] );
-            [copy] copy_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_offset: u64, [readonly(copy)] src: &$crate::Buffer, src_offset: u64, size: u64 );
-            [copy] copy_texture_to_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_byte_offset: u64, row_pitch: u32, buffer_image_size: &[u32;3], dst_offset: &[u32;3], [readonly(copy)] src: &$crate::Texture, src_offset: &[u32;3], extent: &[u32;3] );
-            [copy] copy_buffer_to_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: &[u32;3], [readonly(copy)] src: &$crate::Buffer, src_byte_offset: u64, row_pitch: u32, buffer_image_size: &[u32;3], src_offset: &[u32;3], extent: &[u32;3] );
-            [graphics] resolve( [readwrite(resolve)] dst: &$crate::Texture, dst_offset: &[u32;2], [readonly(resolve)] src: &$crate::Texture, src_offset: &[u32;2], extent: &[u32;2], resolve_mode: $crate::RpsResolveMode );
+            [graphics] node clear_color( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
+            [graphics] node clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
+            [graphics] node clear_depth_stencil( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
+            [graphics] node clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil, num_rects: u32, rects: $crate::IVec4 );
+            [compute] node clear_texture( [writeonly(clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, data: $crate::UVec4 );
+            [compute] node clear_texture_regions( [readwrite(clear)] t: &$crate::Texture, data : $crate::UVec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
+            [compute] node clear_buffer( [writeonly(clear)] b: &$crate::Buffer, option: $crate::RpsClearFlags, data: $crate::UVec4 );
+            [copy] node copy_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+            [copy] node copy_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_offset: u64, [readonly(copy)] src: &$crate::Buffer, src_offset: u64, size: u64 );
+            [copy] node copy_texture_to_buffer( [readwrite(copy)] dst: &$crate::Buffer, dst_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Texture, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+            [copy] node copy_buffer_to_texture( [readwrite(copy)] dst: &$crate::Texture, dst_offset: $crate::UVec3, [readonly(copy)] src: &$crate::Buffer, src_byte_offset: u64, row_pitch: u32, buffer_image_size: $crate::UVec3, src_offset: $crate::UVec3, extent: $crate::UVec3 );
+            [graphics] node resolve( [readwrite(resolve)] dst: &$crate::Texture, dst_offset: $crate::UVec2, [readonly(resolve)] src: &$crate::Texture, src_offset: $crate::UVec2, extent: $crate::UVec2, resolve_mode: $crate::RpsResolveMode );
             $($t)*
         )}
         $crate::define_exports_impl!{@exports [$rg_name] (0)
