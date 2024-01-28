@@ -845,7 +845,7 @@ pub enum RpsResolveMode
 
 
 macro_rules! impl_rps_built_in_type_info {
-    (&$type_name:ty, $sz:expr, $id:ident) => {
+    (&$type_name:ty, $id:ident) => {
         impl RpsTypeInfoTrait for &$type_name {
             const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
                 size: std::mem::size_of::<$type_name>() as u16,
@@ -857,7 +857,7 @@ macro_rules! impl_rps_built_in_type_info {
             }
         }
     };
-    ($type_name:ty, $sz:expr, $id:ident) => {
+    ($type_name:ty, $id:ident) => {
         impl RpsTypeInfoTrait for $type_name {
             const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
                 size: std::mem::size_of::<$type_name>() as u16,
@@ -877,45 +877,21 @@ impl<U: RpsTypeInfoTrait, const N: usize> RpsTypeInfoTrait for &[U; N] {
     }
 }
 
-impl<const N: usize> RpsTypeInfoTrait for &[Texture; N] {
-    // Array size is stored separately in CRpsParameterDesc. Ignore here.
-    const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
-        size: std::mem::size_of::<Texture>() as u16,
-        id: RpsBuiltInTypeIds::RPS_TYPE_IMAGE_VIEW as u16,
-    };
-    const RPS_ARRAY_LEN : u32 = N as u32;
-
-    fn to_c_ptr(&self) -> *const c_void {
-        (*self) as *const _ as *const c_void
-    }
-}
-
-impl<const N: usize> RpsTypeInfoTrait for &[Buffer; N] {
-    // Array size is stored separately in CRpsParameterDesc. Ignore here.
-    const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
-        size: std::mem::size_of::<Buffer>() as u16,
-        id: RpsBuiltInTypeIds::RPS_TYPE_BUFFER_VIEW as u16,
-    };
-    const RPS_ARRAY_LEN : u32 = N as u32;
-
-    fn to_c_ptr(&self) -> *const c_void {
-        (*self) as *const _ as *const c_void
-    }
-}
-
-impl_rps_built_in_type_info!(bool, 1, RPS_TYPE_BUILT_IN_BOOL);
-impl_rps_built_in_type_info!(i8, 1, RPS_TYPE_BUILT_IN_INT8);
-impl_rps_built_in_type_info!(u8, 1, RPS_TYPE_BUILT_IN_UINT8);
-impl_rps_built_in_type_info!(i16, 2, RPS_TYPE_BUILT_IN_INT16);
-impl_rps_built_in_type_info!(u16, 2, RPS_TYPE_BUILT_IN_UINT16);
-impl_rps_built_in_type_info!(i32, 4, RPS_TYPE_BUILT_IN_INT32);
-impl_rps_built_in_type_info!(u32, 4, RPS_TYPE_BUILT_IN_UINT32);
-impl_rps_built_in_type_info!(i64, 8, RPS_TYPE_BUILT_IN_INT64);
-impl_rps_built_in_type_info!(u64, 8, RPS_TYPE_BUILT_IN_UINT64);
-impl_rps_built_in_type_info!(f32, 4, RPS_TYPE_BUILT_IN_FLOAT32);
-impl_rps_built_in_type_info!(f64, 8, RPS_TYPE_BUILT_IN_FLOAT64);
-impl_rps_built_in_type_info!(&Texture, 8, RPS_TYPE_IMAGE_VIEW);
-impl_rps_built_in_type_info!(&Buffer, 8, RPS_TYPE_BUFFER_VIEW);
+impl_rps_built_in_type_info!(bool, RPS_TYPE_BUILT_IN_BOOL);
+impl_rps_built_in_type_info!(i8, RPS_TYPE_BUILT_IN_INT8);
+impl_rps_built_in_type_info!(u8, RPS_TYPE_BUILT_IN_UINT8);
+impl_rps_built_in_type_info!(i16, RPS_TYPE_BUILT_IN_INT16);
+impl_rps_built_in_type_info!(u16, RPS_TYPE_BUILT_IN_UINT16);
+impl_rps_built_in_type_info!(i32, RPS_TYPE_BUILT_IN_INT32);
+impl_rps_built_in_type_info!(u32, RPS_TYPE_BUILT_IN_UINT32);
+impl_rps_built_in_type_info!(i64, RPS_TYPE_BUILT_IN_INT64);
+impl_rps_built_in_type_info!(u64, RPS_TYPE_BUILT_IN_UINT64);
+impl_rps_built_in_type_info!(f32, RPS_TYPE_BUILT_IN_FLOAT32);
+impl_rps_built_in_type_info!(f64, RPS_TYPE_BUILT_IN_FLOAT64);
+impl_rps_built_in_type_info!(Texture, RPS_TYPE_IMAGE_VIEW);
+impl_rps_built_in_type_info!(Buffer, RPS_TYPE_BUFFER_VIEW);
+impl_rps_built_in_type_info!(&Texture, RPS_TYPE_IMAGE_VIEW);
+impl_rps_built_in_type_info!(&Buffer, RPS_TYPE_BUFFER_VIEW);
 
 
 pub const fn uint4(x: u32, y: u32, z: u32, w: u32) -> glam::UVec4 {
