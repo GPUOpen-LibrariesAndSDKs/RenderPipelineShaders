@@ -92,7 +92,7 @@ namespace rps
             return RPS_OK;
         }
 
-        void ExitCallEntry()
+        void BeginCallEntry()
         {
             m_blockStack.clear();
         }

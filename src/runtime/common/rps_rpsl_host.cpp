@@ -30,9 +30,10 @@ namespace rps
         {
             RPS_STATIC_ASSERT(RPS_OK == 0, "RPS_OK must be 0");
             RPS_STATIC_ASSERT(!RPS_FAILED(0), "RPS_FAILED no longer maps 0 as a success code");
-            RPS_V_RETURN(RpslHostCallEntry(pCurrProgram->GetEntry()->pfnEntry, execInfo.numArgs, execInfo.ppArgs));
 
-            m_pGraphBuilder->GetCurrentProgram()->m_persistentIndexGenerator.ExitCallEntry();
+            m_pGraphBuilder->GetCurrentProgram()->m_persistentIndexGenerator.BeginCallEntry();
+
+            RPS_V_RETURN(RpslHostCallEntry(pCurrProgram->GetEntry()->pfnEntry, execInfo.numArgs, execInfo.ppArgs));
         }
         else
         {

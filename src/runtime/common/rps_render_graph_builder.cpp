@@ -266,6 +266,8 @@ namespace rps
 
                 ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
 
+                pSubprogramInstance->m_persistentIndexGenerator.BeginCallEntry();
+
                 (nodeImpl.pSubprogram->GetEntry()->pfnEntry)(
                     uint32_t(args.size()), args.data(), RPSL_ENTRY_CALL_SUBPROGRAM);
             }
