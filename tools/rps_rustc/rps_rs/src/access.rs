@@ -226,8 +226,10 @@ bitflags::bitflags! {
 
         const CUBEMAP_BIT                     = 1u64 << 63;
 
-        const TMP_READ_BIT                    = 1u64 << 61;
-        const TMP_WRITE_BIT                   = 1u64 << 62;
+        const TMP_READ_BIT                    = 1u64 << 62;
+        const TMP_WRITE_BIT                   = 1u64 << 61;
+        const TMP_STENCIL_READ_BIT            = 1u64 << 60;
+        const TMP_STENCIL_WRITE_BIT           = 1u64 << 59;
     }
 }
 
@@ -282,16 +284,18 @@ impl CRpsParamAttr {
             _ => panic!(""),
         };
 
-        let (is_write, is_read) = (
+        let (is_write, is_read, is_stencil_write, is_stencil_read) = (
             flags.contains(AccessFlags::TMP_WRITE_BIT),
-            flags.contains(AccessFlags::TMP_READ_BIT)
+            flags.contains(AccessFlags::TMP_READ_BIT),
+            flags.contains(AccessFlags::TMP_STENCIL_WRITE_BIT),
+            flags.contains(AccessFlags::TMP_STENCIL_READ_BIT)
         );
 
         // Apply implicit access from rw attrs:
         if stage != 0 {
             if is_write {
                 access_flags |= AccessFlags::UNORDERED_ACCESS_BIT.bits() as u32;
-            } else if is_read {
+            } else if is_read || is_stencil_read {
                 access_flags |= AccessFlags::SHADER_RESOURCE_BIT.bits() as u32;
             } 
         }
@@ -304,9 +308,11 @@ impl CRpsParamAttr {
             CRpsSemanticType::STREAM_OUT_BUFFER => AccessFlags::STREAM_OUT_BIT,
             CRpsSemanticType::INDIRECT_COUNT => AccessFlags::INDIRECT_ARGS_BIT,
             CRpsSemanticType::RENDER_TARGET => AccessFlags::RENDER_TARGET_BIT,
-            CRpsSemanticType::DEPTH_STENCIL_TARGET =>
-                if is_write { AccessFlags::DEPTH_WRITE_BIT }
-                else { AccessFlags::DEPTH_READ_BIT },
+            CRpsSemanticType::DEPTH_STENCIL_TARGET => {
+                let depth_flags = if is_read && !is_write { AccessFlags::DEPTH_READ_BIT } else { AccessFlags::DEPTH_WRITE_BIT };
+                let stencil_flags = if is_stencil_read && !is_stencil_write { AccessFlags::STENCIL_READ_BIT } else { AccessFlags::STENCIL_WRITE_BIT };
+                AccessFlags::from_bits_truncate(depth_flags.bits() | stencil_flags.bits())
+            },
             CRpsSemanticType::SHADING_RATE_IMAGE => AccessFlags::SHADING_RATE_BIT,
             CRpsSemanticType::RESOLVE_TARGET => AccessFlags::RESOLVE_DEST_BIT,
             _ => AccessFlags::UNKNOWN,
@@ -351,6 +357,9 @@ pub const fn get_rps_ffi_param_flags<T: RpsTypeInfoTrait>() -> CRpsParameterFlag
 #[macro_export]
 #[doc(hidden)]
 macro_rules! convert_access_flag {
+    // Not distinguishing depth/stencil only accesses here.
+    // E.g. STENCIL_DISCARD_DATA_BEFORE_BIT, 
+    // They will be handled in post_process_access_attr.
     (readonly, $flag:ident) => {$crate::convert_access_flag!(@r, $flag).bits() | $crate::access::AccessFlags::TMP_READ_BIT.bits() };
     (readwrite, $flag:ident) => {$crate::convert_access_flag!(@w, $flag).bits() | $crate::access::AccessFlags::TMP_WRITE_BIT.bits() };
     (writeonly, $flag:ident) => {$crate::convert_access_flag!(@w, $flag).bits() | $crate::access::AccessFlags::TMP_WRITE_BIT.bits() | $crate::access::AccessFlags::DISCARD_DATA_BEFORE_BIT.bits()};
@@ -411,6 +420,9 @@ pub const fn post_process_access_attr(flags: u64) -> u64 {
     let has_discard_before = (flags & AccessFlags::DISCARD_DATA_BEFORE_BIT.bits()) != 0;
     let has_discard_after = (flags & AccessFlags::DISCARD_DATA_AFTER_BIT.bits()) != 0;
 
+    let has_tmp_read = (flags & AccessFlags::TMP_READ_BIT.bits()) != 0;
+    let has_tmp_write = (flags & AccessFlags::TMP_WRITE_BIT.bits()) != 0;
+
     if has_stencil {
         if has_discard_before {
             flags |= AccessFlags::STENCIL_DISCARD_DATA_BEFORE_BIT.bits();
@@ -422,6 +434,18 @@ pub const fn post_process_access_attr(flags: u64) -> u64 {
             flags |= AccessFlags::STENCIL_DISCARD_DATA_AFTER_BIT.bits();
             if !has_depth {
                 flags &= !AccessFlags::DISCARD_DATA_AFTER_BIT.bits();
+            }
+        }
+        if has_tmp_read {
+            flags |= AccessFlags::TMP_STENCIL_READ_BIT.bits();
+            if !has_depth {
+                flags &= !AccessFlags::TMP_READ_BIT.bits();
+            }
+        }
+        if has_tmp_write {
+            flags |= AccessFlags::TMP_STENCIL_WRITE_BIT.bits();
+            if !has_depth {
+                flags &= !AccessFlags::TMP_WRITE_BIT.bits();
             }
         }
     }
