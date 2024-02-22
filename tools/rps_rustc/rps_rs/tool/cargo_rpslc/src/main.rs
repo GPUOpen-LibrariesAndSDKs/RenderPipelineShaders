@@ -64,6 +64,7 @@ Usage: cargo_rpslc <source_file_name> [cargo_rpslc options...] [-- [cargo option
 cargo_rpslc options:
     -o: output file name
     -od: output directory
+    -expand: expand macros (use cargo-expand subcommand)
 ");
         return;
     }
