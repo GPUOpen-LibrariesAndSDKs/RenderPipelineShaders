@@ -137,39 +137,7 @@ protected:
 
         if (useRps)
         {
-            RpsRenderGraphBatchLayout batchLayout = {};
-            RpsResult                 result      = rpsRenderGraphGetBatchLayout(m_rpsRenderGraph, &batchLayout);
-            REQUIRE(result == RPS_OK);
-
-            ReserveSemaphores(batchLayout.numFenceSignals);
-
-            for (uint32_t iBatch = 0; iBatch < batchLayout.numCmdBatches; iBatch++)
-            {
-                auto& batch = batchLayout.pCmdBatches[iBatch];
-
-                ActiveCommandList cmdList = BeginCmdList(RPS_AFX_QUEUE_INDEX_GFX);
-
-                RpsRenderGraphRecordCommandInfo recordInfo = {};
-
-                recordInfo.pUserContext  = this;
-                recordInfo.cmdBeginIndex = batch.cmdBegin;
-                recordInfo.numCmds       = batch.numCmds;
-                recordInfo.hCmdBuffer    = rpsVKCommandBufferToHandle(cmdList.cmdBuf);
-
-                result = rpsRenderGraphRecordCommands(m_rpsRenderGraph, &recordInfo);
-                REQUIRE(result == RPS_OK);
-
-                EndCmdList(cmdList);
-
-                SubmitCmdLists(&cmdList,
-                               1,
-                               ((iBatch + 1) == batchLayout.numCmdBatches),
-                               batch.numWaitFences,
-                               batchLayout.pWaitFenceIndices + batch.waitFencesBegin,
-                               batch.signalFenceIndex);
-
-                RecycleCmdList(cmdList);
-            }
+            ExecuteRenderGraph(frameIndex, m_rpsRenderGraph);
         }
         else
         {
@@ -179,7 +147,7 @@ protected:
 
             EndCmdList(cmdList);
 
-            SubmitCmdLists(&cmdList, 1, VK_TRUE);
+            SubmitCmdLists(&cmdList, 1, true);
 
             RecycleCmdList(cmdList);
         }
