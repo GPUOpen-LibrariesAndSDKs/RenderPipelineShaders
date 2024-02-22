@@ -225,6 +225,12 @@ function( CompileRpslDxc TargetName RpslFileName GeneratedSource OutDirPrefix )
     set( ${GeneratedSource} "${OutputSource}" PARENT_SCOPE )
 endfunction()
 
+if ( WIN32 )
+    set( RpsRustCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_rustc/bin/win-x64/" )
+elseif ( RpsOsLinux )
+    set( RpsRustCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_rustc/bin/linux-x64/" )
+endif ( )
+
 # Copy assets
 function( CopyShaders TargetName ShaderFiles SrcFolder )
     foreach( Shader ${ShaderFiles} )
