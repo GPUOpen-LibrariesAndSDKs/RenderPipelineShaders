@@ -165,7 +165,7 @@ impl BlockMarker {
     pub const LOOP_END : u32 = 3;
 }
 
-#[inline]
+#[inline(always)]
 #[doc(hidden)]
 pub fn call_node(dcl_id: u32, local_id: u32, arg_ptrs: &[*const c_void]) -> Node {
     Node {
@@ -392,6 +392,7 @@ macro_rules! declare_nodes_impl {
             paste::item! {
                 #[allow(unused, non_snake_case)]
                 #[macro_utils::render_graph_node_fn]
+                #[inline(always)]
                 $node_vis fn $fn_name ($( $arg_name : $arg_type ),* ) -> $crate::Node {
                     use $crate::rpsl_runtime::RpsTypeInfoTrait;
                     let arg_ptrs = unsafe {
@@ -625,9 +626,9 @@ macro_rules! render_graph {
             use $crate::{*};
             $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () (
                 // TODO: Stick built-in nodes here until we support importing nodes from a different module.
-                [graphics] node clear_color( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
+                [graphics] node clear_color( [writeonly(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
                 [graphics] node clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
-                [graphics] node clear_depth_stencil( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
+                [graphics] node clear_depth_stencil( [writeonly(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil );
                 [graphics] node clear_depth_stencil_regions( [readwrite(depth, stencil, clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, d : f32 : SV_ClearDepth, s : u32 : SV_ClearStencil, num_rects: u32, rects: $crate::IVec4 );
                 [compute] node clear_texture( [writeonly(clear)] t: &$crate::Texture, option: $crate::RpsClearFlags, data: $crate::UVec4 );
                 [compute] node clear_texture_regions( [readwrite(clear)] t: &$crate::Texture, data : $crate::UVec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
