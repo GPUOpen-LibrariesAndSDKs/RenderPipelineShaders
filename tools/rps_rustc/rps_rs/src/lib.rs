@@ -9,6 +9,10 @@ use access::{*};
 
 pub use rps_types::{*};
 
+pub mod macro_utils{
+pub use macro_utils::{*};
+}
+
 pub use glam::{
     Vec2, Vec3, Vec4, IVec2, IVec3, IVec4, UVec2, UVec3, UVec4,
     vec2, vec3, vec4, ivec2, ivec3, ivec4, uvec2, uvec3, uvec4};
