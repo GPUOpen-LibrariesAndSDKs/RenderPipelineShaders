@@ -107,9 +107,6 @@ linkme = "0.3.20"
 paste = "1.0.14"
 rps_rs = {{ path = "{1}", features = ["rpsl_dylib"] }}
 
-[dependencies.macro_utils]
-path = "{1}/macro_utils"
-
 [lib]
 crate-type = ["cdylib"]
 path = "{2}"
