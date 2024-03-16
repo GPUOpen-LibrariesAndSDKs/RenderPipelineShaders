@@ -88,30 +88,6 @@ namespace rps
     static inline RpsResourceFlags D3D12ResourceFlagsToRps(D3D12_RESOURCE_FLAGS flags)
     {
         RpsResourceFlags result = RPS_RESOURCE_FLAG_NONE;
-
-        if (flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
-            result |= RPS_ACCESS_UNORDERED_ACCESS_BIT;
-
-        if (flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)
-            result |= RPS_ACCESS_RENDER_TARGET_BIT;
-
-        if (flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)
-        {
-            result |= RPS_ACCESS_DEPTH_STENCIL;
-
-            if (!(flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE))
-            {
-                result |= RPS_ACCESS_SHADER_RESOURCE_BIT;
-            }
-        }
-
-#if RPS_D3D12_ENHANCED_BARRIER_SUPPORT
-        if (flags & D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE)
-        {
-            result |= (RPS_ACCESS_RAYTRACING_AS_BUILD_BIT | RPS_ACCESS_RAYTRACING_AS_READ_BIT);
-        }
-#endif  //RPS_D3D12_ENHANCED_BARRIER_SUPPORT
-
         return result;
     }
 

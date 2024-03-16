@@ -63,7 +63,7 @@ protected:
             EndCmdList(cl);
         }
 
-        SubmitCmdLists(m_activePrimaryCmdBufs.data(), uint32_t(m_activePrimaryCmdBufs.size()), VK_TRUE);
+        SubmitCmdLists(m_activePrimaryCmdBufs.data(), uint32_t(m_activePrimaryCmdBufs.size()), true);
 
         for (auto& secondaryCmdBuf : m_activeSecondaryCmdBufs)
         {
