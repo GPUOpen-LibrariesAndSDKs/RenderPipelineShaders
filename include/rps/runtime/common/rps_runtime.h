@@ -344,6 +344,15 @@ typedef RpsResult (*PFN_rpsRenderGraphBuild)(RpsRenderGraphBuilder hBuilder,
                                              const RpsConstant*    pArgs,
                                              uint32_t              numArgs);
 
+
+typedef RpsSubprogram (*PFN_rpsSelectDynamicSubprogram)(void* pContext, const RpsConstant* pArgs, uint32_t numArgs);
+
+typedef struct RpsSelectDynamicSubprogramCallback
+{
+    PFN_rpsSelectDynamicSubprogram pfnSelectDynamicSubprogram;
+    void*                          pUserContext;
+} RpsSelectDynamicSubprogramCallback;
+
 /// @brief Parameters for updating a render graph.
 ///
 /// @relates RpsRenderGraph
@@ -582,6 +591,11 @@ RpsResult rpsProgramBindNodeCallback(RpsSubprogram hProgram, const char* name, c
 ///
 /// @returns                        Result code of the operation. See <c><i>RpsResult</i></c> for more info.
 RpsResult rpsProgramBindNodeSubprogram(RpsSubprogram hProgram, const char* name, RpsSubprogram hSubprogram);
+
+
+RpsResult rpsProgramBindNodeDynamicProgram(RpsSubprogram                             hProgram,
+                                           const char*                               name,
+                                           const RpsSelectDynamicSubprogramCallback* pCallback);
 
 /// @} end addtogroup RpsSubprogram
 

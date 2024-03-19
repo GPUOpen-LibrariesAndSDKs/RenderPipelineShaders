@@ -39,13 +39,15 @@ namespace rps
             {
                 Unknown,
                 RpslEntry,
+                DynamicRpslEntry,
                 Callback,
             };
 
             union
             {
-                Subprogram*    pSubprogram;
-                RpsCmdCallback callback;
+                Subprogram*                        pSubprogram;
+                RpsCmdCallback                     callback;
+                RpsSelectDynamicSubprogramCallback selectSubprogramCallback;
             };
 
             void*    pBuffer    = nullptr;
@@ -65,6 +67,12 @@ namespace rps
             {
                 pSubprogram = pSubprogramIn;
                 type        = Type::RpslEntry;
+            }
+
+            void Set(const RpsSelectDynamicSubprogramCallback& inCallback)
+            {
+                selectSubprogramCallback = inCallback;
+                type                     = Type::DynamicRpslEntry;
             }
 
         private:
@@ -148,6 +156,16 @@ namespace rps
             }
         }
 
+        RpsResult Bind(StrRef name, const RpsSelectDynamicSubprogramCallback& callback)
+        {
+            RPS_RETURN_ERROR_IF(name.empty(), RPS_ERROR_INVALID_ARGUMENTS);
+
+            const uint32_t nodeDeclId = m_pSignature->FindNodeDeclIndexByName(name);
+            RPS_RETURN_ERROR_IF(nodeDeclId == RPS_INDEX_NONE_U32, RPS_ERROR_UNKNOWN_NODE);
+
+            return Bind(nodeDeclId, callback);
+        }
+
         RpsResult Bind(uint32_t nodeDeclId, Subprogram* pRpslEntry)
         {
             RPS_CHECK_ARGS(nodeDeclId < m_nodeImpls.size());
@@ -158,6 +176,15 @@ namespace rps
         }
 
         RpsResult Bind(uint32_t nodeDeclId, const RpsCmdCallback& callback)
+        {
+            RPS_CHECK_ARGS(nodeDeclId < m_nodeImpls.size());
+
+            m_nodeImpls[nodeDeclId].Set(callback);
+
+            return RPS_OK;
+        }
+
+        RpsResult Bind(uint32_t nodeDeclId, const RpsSelectDynamicSubprogramCallback& callback)
         {
             RPS_CHECK_ARGS(nodeDeclId < m_nodeImpls.size());
 

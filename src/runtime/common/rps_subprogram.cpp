@@ -102,3 +102,12 @@ RpsResult rpsProgramBindNodeSubprogram(RpsSubprogram hRpslInstance, const char* 
 
     return rps::FromHandle(hRpslInstance)->Bind(name, rps::FromHandle(hSubprogram));
 }
+
+RpsResult rpsProgramBindNodeDynamicProgram(RpsSubprogram                             hRpslInstance,
+                                           const char*                               name,
+                                           const RpsSelectDynamicSubprogramCallback* pCallback)
+{
+    RPS_CHECK_ARGS(hRpslInstance);
+
+    return rps::FromHandle(hRpslInstance)->Bind(name, *pCallback);
+}
