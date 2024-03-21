@@ -299,35 +299,38 @@ namespace rps
                     uint32_t(args.size())));
             }
 
-            // TODO: using CmdId as global persistent ProgramInstanceId for now.
-            // TODO: need to version nodeImpl.pSubprogram in case it's recreated at the same address.
-            auto             pSubprogramInstanceId = &m_cmdNodes.GetSlot(beginSubroutine)->programInstanceId;
-            ProgramInstance* pSubprogramInstance =
-                m_renderGraph.GetOrCreateProgramInstance(pCalleeSubprogram, *pSubprogramInstanceId);
-
-            if (pCurrProgram->GetEntry())
+            if (pCalleeSubprogram)
             {
-                // Fast path, both caller and callee are RPSL functions,
-                // call the function directly without extra context setup.
+                // TODO: using CmdId as global persistent ProgramInstanceId for now.
+                // TODO: need to version nodeImpl.pSubprogram in case it's recreated at the same address.
+                auto             pSubprogramInstanceId = &m_cmdNodes.GetSlot(beginSubroutine)->programInstanceId;
+                ProgramInstance* pSubprogramInstance =
+                    m_renderGraph.GetOrCreateProgramInstance(pCalleeSubprogram, *pSubprogramInstanceId);
 
-                ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
+                if (pCurrProgram->GetEntry())
+                {
+                    // Fast path, both caller and callee are RPSL functions,
+                    // call the function directly without extra context setup.
 
-                pSubprogramInstance->m_persistentIndexGenerator.BeginCallEntry();
+                    ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
 
-                (pCalleeSubprogram->GetEntry()->pfnEntry)(
-                    uint32_t(args.size()), args.data(), RPSL_ENTRY_CALL_SUBPROGRAM);
-            }
-            else
-            {
-                ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
+                    pSubprogramInstance->m_persistentIndexGenerator.BeginCallEntry();
 
-                RpslExecuteInfo callInfo = {};
-                callInfo.pProgram        = pCalleeSubprogram;
-                callInfo.ppArgs          = args.data();
-                callInfo.numArgs         = uint32_t(args.size());
+                    (pCalleeSubprogram->GetEntry()->pfnEntry)(
+                        uint32_t(args.size()), args.data(), RPSL_ENTRY_CALL_SUBPROGRAM);
+                }
+                else
+                {
+                    ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
 
-                // Temp - Remove pRpslHost param when making RpslHost local context.
-                RPS_V_RETURN(pRpslHost->Execute(callInfo));
+                    RpslExecuteInfo callInfo = {};
+                    callInfo.pProgram        = pCalleeSubprogram;
+                    callInfo.ppArgs          = args.data();
+                    callInfo.numArgs         = uint32_t(args.size());
+
+                    // Temp - Remove pRpslHost param when making RpslHost local context.
+                    RPS_V_RETURN(pRpslHost->Execute(callInfo));
+                }
             }
 
             *pOutCmdId = beginSubroutine;
