@@ -297,6 +297,9 @@ pub extern "C" fn ___rps_runtime_init()
     });
 }
 
+#[cfg(feature = "rpsl_dylib")]
+pub use callbacks::___rps_dyn_lib_init;
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct CRpsResourceDesc
