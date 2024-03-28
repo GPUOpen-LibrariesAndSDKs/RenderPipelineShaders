@@ -281,6 +281,7 @@ namespace rps
                     pResInstance->InvalidateRuntimeResource(pRuntimeBackend);
                 }
                 pResInstance->isPendingInit = false;
+                pResInstance->isAccessed    = false;
 
                 pResInstance->SetInitialAccess(AccessAttr{});
 
@@ -356,6 +357,7 @@ namespace rps
 
                 ResourceInstance tempResInstCopy = parentResInstance;
                 tempResInstCopy.isTemporalSlice  = true;
+                tempResInstCopy.isAccessed       = false;
 
                 if (!bIsParentParamResource)
                 {
@@ -404,6 +406,11 @@ namespace rps
 
                 temporalSlice.SetInitialAccess(AccessAttr{});
                 temporalSlice.finalAccesses = {};
+
+                for (uint32_t iTemporalSlice = 0; iTemporalSlice < numTemporalLayers; iTemporalSlice++)
+                {
+                    resInstances[parentResInstance.temporalLayerOffset + iTemporalSlice].isAccessed = false;
+                }
             }
 
             return RPS_OK;
@@ -838,6 +845,8 @@ namespace rps
             RPS_ASSERT(paramAccessInfo.access.accessFlags != RPS_ACCESS_UNKNOWN);
 
             accessInfo.resourceId = resInstanceId;
+
+            resInstance.isAccessed = true;
 
             bool bPendingRecreate = false;
 

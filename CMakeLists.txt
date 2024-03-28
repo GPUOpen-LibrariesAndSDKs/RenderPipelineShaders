@@ -29,8 +29,8 @@ else ( )
 endif ( )
 
 set( NugetPackagesRoot "${CMAKE_BINARY_DIR}/rps_nuget_packages" )
-set( DXAgilitySDK_VERSION_STRING "1.608.3" )
-set( DXAgilitySDK_VERSION 608 ) # to set D3D12SDKVersion
+set( DXAgilitySDK_VERSION_STRING "1.613.0" )
+set( DXAgilitySDK_VERSION 613 ) # to set D3D12SDKVersion
 set( DXAgilitySDK_INSTALL_DIR "${NugetPackagesRoot}/DXAgilitySDK.${DXAgilitySDK_VERSION_STRING}" )
 set( RpsDXAgilitySDK_DIR "${DXAgilitySDK_INSTALL_DIR}" CACHE STRING "DX12 Agility SDK directory" )
 
@@ -224,6 +224,12 @@ function( CompileRpslDxc TargetName RpslFileName GeneratedSource OutDirPrefix )
         VERBATIM )
     set( ${GeneratedSource} "${OutputSource}" PARENT_SCOPE )
 endfunction()
+
+if ( WIN32 )
+    set( RpsRustCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_rustc/bin/win-x64/" )
+elseif ( RpsOsLinux )
+    set( RpsRustCompilerBinaryDir "${PROJECT_SOURCE_DIR}/tools/rps_rustc/bin/linux-x64/" )
+endif ( )
 
 # Copy assets
 function( CopyShaders TargetName ShaderFiles SrcFolder )

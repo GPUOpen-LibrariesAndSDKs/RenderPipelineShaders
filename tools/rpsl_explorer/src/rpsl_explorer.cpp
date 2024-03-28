@@ -117,6 +117,8 @@ void RpslExplorer::UpdateRpsPipeline(uint64_t                         frameIndex
 {
     if ((m_hRenderGraph != RPS_NULL_HANDLE) && m_renderGraphUpdateEnabled)
     {
+        numArgs = m_entryArgPtrs.empty() ? 0 : numArgs;
+
         assert(numArgs <= m_entryArgPtrs.size());
 
         RpsRenderGraphUpdateInfo updateInfo = {};
@@ -293,8 +295,7 @@ void RpslExplorer::RenderImGuiFrame()
 
         if (bReloadRenderGraph)
         {
-            if (RPS_NULL_HANDLE !=
-                TryLoadEntry(m_currentModule.hRpslJITModule, m_currentModule.moduleName, m_entryPointNames[currEntry]))
+            if (RPS_NULL_HANDLE != TryLoadEntry(m_currentModule, m_entryPointNames[currEntry]))
             {
                 m_selectedEntryPointId = uint32_t(currEntry);
             }

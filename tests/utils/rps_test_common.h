@@ -40,6 +40,10 @@
 RpsRpslEntry rpsTestLoadRpslEntryFromDLL(const std::string& moduleName, const std::string& entryName);
 #define rpsTestLoadRpslEntry(ModuleName, EntryFunction) \
     rpsTestLoadRpslEntryFromDLL(#ModuleName "_rpsl", RPS_ENTRY_NAME(ModuleName, EntryFunction))
+#elif USE_RUST_RPSL_DLL
+RpsRpslEntry rpsTestLoadRpslEntryFromDLL(const std::string& moduleName, const std::string& entryName);
+#define rpsTestLoadRpslEntry(ModuleName, EntryFunction) \
+    rpsTestLoadRpslEntryFromDLL(#ModuleName "_rs", RPS_ENTRY_NAME(ModuleName, EntryFunction))
 #else
 #define rpsTestLoadRpslEntry(ModuleName, EntryFunction) RPS_ENTRY_REF(ModuleName, EntryFunction)
 #endif

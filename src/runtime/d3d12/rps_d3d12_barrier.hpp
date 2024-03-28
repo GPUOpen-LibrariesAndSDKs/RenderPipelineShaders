@@ -204,7 +204,7 @@ namespace rps
 
                         RPS_ASSERT(!(resInstance.isAliased && resInstance.IsPersistent()));
 
-                        if (resInstance.hRuntimeResource && !resInstance.isAliased)
+                        if (resInstance.hRuntimeResource && resInstance.isAccessed && !resInstance.isAliased)
                         {
                             for (auto& finalAccess :
                                  resInstance.finalAccesses.Get(context.renderGraph.GetResourceFinalAccesses()))
