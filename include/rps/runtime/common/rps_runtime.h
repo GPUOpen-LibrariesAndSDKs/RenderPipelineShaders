@@ -1103,6 +1103,8 @@ RpsResult rpsCmdSetCommandBuffer(const RpsCmdCallbackContext* pContext, RpsRunti
 /// @return                                     Result code of the operation. See <c><i>RpsResult</i></c> for more info.
 RpsResult rpsCmdGetNodeName(const RpsCmdCallbackContext* pContext, const char** ppNodeName, size_t* pNodeNameLength);
 
+RpsResult rpsCmdGetNodeDeclIndex(const RpsCmdCallbackContext* pContext, uint32_t* pNodeDeclIndex);
+
 /// @brief Gets the description of a node argument.
 ///
 /// @param pContext                             Pointer to the current command callback context. Must not be NULL.

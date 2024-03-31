@@ -486,6 +486,17 @@ RpsResult rpsCmdGetNodeName(const RpsCmdCallbackContext* pContext, const char** 
     return RPS_OK;
 }
 
+RpsResult rpsCmdGetNodeDeclIndex(const RpsCmdCallbackContext* pContext, uint32_t* pNodeDeclIndex)
+{
+    RPS_CHECK_ARGS(pContext && pNodeDeclIndex);
+
+    auto pBackendContext = rps::RuntimeCmdCallbackContext::Get(pContext);
+
+    *pNodeDeclIndex = pBackendContext->pCmdInfo->nodeDeclIndex;
+
+    return RPS_OK;
+}
+
 RpsResult rpsCmdGetParamDesc(const RpsCmdCallbackContext* pContext, RpsParamId paramId, RpsParameterDesc* pDesc)
 {
     RPS_CHECK_ARGS(pContext && pDesc);
