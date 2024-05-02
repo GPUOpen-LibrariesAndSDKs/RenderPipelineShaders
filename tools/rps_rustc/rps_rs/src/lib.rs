@@ -53,15 +53,28 @@ unsafe impl Sync for CStrPtr {}
 
 impl CStrPtr {
     pub fn into_cstr<'a>(&self) -> &'a core::ffi::CStr {
-        unsafe { core::ffi::CStr::from_ptr(self.0) }
+        match self.0.is_null() {
+            false => unsafe { core::ffi::CStr::from_ptr(self.0) },
+            true => core::ffi::CStr::from_bytes_with_nul(b"\0").unwrap(),
+        }
     }
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct CRpsParameterDescConstPtr(pub *const CRpsParameterDesc);
 
 unsafe impl Sync for CRpsParameterDescConstPtr{}
 unsafe impl Send for CRpsParameterDescConstPtr{}
+
+impl CRpsParameterDescConstPtr {
+    fn as_slice(self, known_len: usize) -> &'static [CRpsParameterDesc] {
+        match self.0.is_null() {
+            false => unsafe{core::slice::from_raw_parts(self.0, known_len)},
+            true => &[],
+        }
+    }
+}
 
 #[repr(C)]
 pub struct RawConstPtr<T: Sized>(pub *const T);
@@ -134,12 +147,49 @@ fn init_node_ids()
     let mut name_id_map = std::collections::HashMap::new();
 
     crate::GLOBAL_NODE_DECLS.iter().enumerate().for_each(|(i, e)| {
-        name_id_map.entry(e.name.into_cstr()).or_insert(i as u32);
+        match name_id_map.entry(e.name.into_cstr()) {
+            std::collections::hash_map::Entry::Occupied(occupied) => {
+                if &crate::GLOBAL_NODE_DECLS[*occupied.get() as usize] != e {
+                    panic!("Duplicated node declaration '{}' at index [{}] and [{}] with incompatible signature!",
+                           e.name.into_cstr().to_str().unwrap_or("<unknown>"), *occupied.get(), i);
+                }
+            },
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(i as u32);
+            }
+        }
     });
 
     GLOBAL_NODE_INFO_TABLE.iter().for_each(|node_info| {
         (node_info.id_setter)(name_id_map[node_info.name.into_cstr()]);
     });
+}
+
+impl PartialEq for CStrPtr {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0.is_null() && other.0.is_null()) ||
+        (!self.0.is_null() && !other.0.is_null() && (self.into_cstr() == other.into_cstr()))
+    }
+}
+
+impl PartialEq for CRpsParameterDesc {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_info == other.type_info &&
+        self.array_size == other.array_size &&
+        ((self.attr.is_null() && other.attr.is_null()) ||
+         (!self.attr.is_null() && !other.attr.is_null() && unsafe{*self.attr == *other.attr})) &&
+        // Skip name here as we only care about signature.
+        self.flags == other.flags
+    }
+}
+
+impl PartialEq for CRpsNodeDesc {
+    fn eq(&self, other: &Self) -> bool {
+        self.flags == other.flags &&
+        self.num_params == other.num_params &&
+        self.p_param_descs.as_slice(self.num_params as _) == other.p_param_descs.as_slice(other.num_params as _) &&
+        self.name == other.name
+    }
 }
 
 fn init_entry_node_descs() {

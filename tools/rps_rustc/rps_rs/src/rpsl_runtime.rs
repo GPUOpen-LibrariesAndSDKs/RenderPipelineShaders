@@ -343,6 +343,7 @@ impl Into<ResourceDesc> for CRpsResourceDesc {
 
 
 #[repr(C)]
+#[derive(PartialEq)]
 pub struct CRpsTypeInfo
 {
     pub size: u16,

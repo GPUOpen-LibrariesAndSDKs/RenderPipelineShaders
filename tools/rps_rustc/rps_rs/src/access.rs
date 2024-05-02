@@ -4,7 +4,7 @@
 use crate::rpsl_runtime::{RpsTypeInfoTrait, RpsBuiltInTypeIds, CRpsTypeInfo};
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum CRpsSemanticType
 {
@@ -146,7 +146,7 @@ impl CRpsSemanticType {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct CRpsSemanticAttr
 {
     pub semantic: CRpsSemanticType,
@@ -234,7 +234,7 @@ bitflags::bitflags! {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct CRpsAccessAttr
 {
     pub access_flags: u32,
@@ -242,7 +242,7 @@ pub struct CRpsAccessAttr
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct CRpsParamAttr
 {
     pub access: CRpsAccessAttr,
