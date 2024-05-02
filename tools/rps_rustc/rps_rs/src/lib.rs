@@ -126,10 +126,16 @@ pub static GLOBAL_NODE_INFO_TABLE: [NodeInfo];
 
 fn init_node_ids()
 {
-    let name_id_map : std::collections::HashMap<&core::ffi::CStr, u32> =
-        crate::GLOBAL_NODE_DECLS.iter().enumerate().map(|(i, e)| {
-            (e.name.into_cstr(), i as u32)
-        }).collect();
+    // TODO: This doesn't remove duplicated entries from GLOBAL_NODE_DECLS
+    // (e.g. caused by built-in node decls from multiple user-defined entries).
+    // Relying on runtime behavior in FindNodeDeclIndexByName which returns
+    // the first match by name.
+    // Ideally create a [CRpsNodeDesc] here to be exposed to CRpslEntry.
+    let mut name_id_map = std::collections::HashMap::new();
+
+    crate::GLOBAL_NODE_DECLS.iter().enumerate().for_each(|(i, e)| {
+        name_id_map.entry(e.name.into_cstr()).or_insert(i as u32);
+    });
 
     GLOBAL_NODE_INFO_TABLE.iter().for_each(|node_info| {
         (node_info.id_setter)(name_id_map[node_info.name.into_cstr()]);
