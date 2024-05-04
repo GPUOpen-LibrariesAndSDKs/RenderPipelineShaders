@@ -239,7 +239,8 @@ namespace rps
 
         auto& nodeImpl = pCurrProgram->GetNodeImpl(localNodeDeclId);
 
-        if (nodeImpl.type == Subprogram::RpslNodeImpl::Type::Callback)
+        if ((nodeImpl.type == Subprogram::RpslNodeImpl::Type::Callback) ||
+            (nodeImpl.type == Subprogram::RpslNodeImpl::Type::Unknown)) // Use default callback for Unknown type.
         {
             auto pNodeDecl = pCurrProgram->GetSignature()->GetNodeDecl(localNodeDeclId);  // TODO: Handle dynamic nodes
             RPS_ASSERT(pNodeDecl->params.size() == args.size());
