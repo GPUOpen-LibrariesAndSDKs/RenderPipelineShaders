@@ -443,8 +443,11 @@ macro_rules! declare_nodes_impl {
                 $arg_name:ident : $arg_type:ty
                 $(: $arg_semantic:ident)? ),* );
         )*)
+        ($($other_items:item)*)
         ()
     ) => {
+        // Put all other items (e.g. use decls at the top for now)
+        $($other_items)*
         $(
             paste::item! {
                 #[allow(unused, non_snake_case)]
@@ -513,6 +516,7 @@ macro_rules! declare_nodes_impl {
                 $( $([$access_attr:ident $(( $($access_flags:ident),* ))?])*
                 $arg_name:ident : $arg_type:ty
                 $(: $arg_semantic:ident)? ),* ); )*)
+        ($($other_items:item)*)
         (
             $fn_vis:vis $(export)? fn $curr_fn_name:ident (
                 $( $([$curr_access_attr:ident $(( $($curr_access_flags:ident),* ))?])*
@@ -529,7 +533,7 @@ macro_rules! declare_nodes_impl {
                 $( $([$access_attr $(( $($access_flags),* ))?])*
                 $arg_name : $arg_type $(: $arg_semantic)? ),*
         ); )*)
-
+        ($($other_items)*)
         ($($t)*)}
     };
 
@@ -540,6 +544,7 @@ macro_rules! declare_nodes_impl {
                 $( $([$access_attr:ident $(( $($access_flags:ident),* ))?])*
                 $arg_name:ident : $arg_type:ty $(: $arg_semantic:ident)? ),*
             ); )*)
+        ($($other_items:item)*)
         (
             $curr_node_vis:vis $([$curr_node_type:ident])? node $curr_fn_name:ident(
                 $( $([$curr_access_attr:ident $(( $($curr_access_flags:ident),* ))?])*
@@ -559,8 +564,31 @@ macro_rules! declare_nodes_impl {
                 $( $([$curr_access_attr $(( $($curr_access_flags),* ))?])*
                 $curr_arg_name : $curr_arg_type $(: $curr_arg_semantic)? ),*
             );
-        ) ($($t)*) }
+        ) ($($other_items)*) ($($t)*) }
     };
+
+    // Other items:
+    (@nodes [$rg_vis:vis $name:ident]
+        ($(
+            $node_vis:vis $([$node_type:ident])? $fn_name:ident(
+                $( $([$access_attr:ident $(( $($access_flags:ident),* ))?])*
+                $arg_name:ident : $arg_type:ty $(: $arg_semantic:ident)? ),*
+            ); )*)
+        ($($other_items:item)*)
+        (
+            $other_item:item
+
+            $($t:tt)*
+        )
+    ) => {
+        $crate::declare_nodes_impl!{@nodes [$rg_vis $name]
+        (
+            $($node_vis $([$node_type])? $fn_name(
+                $( $([$access_attr $(( $($access_flags),* ))?])*
+                $arg_name : $arg_type $(: $arg_semantic)? ),* );
+            )*
+        ) ($($other_items)* $other_item) ($($t)*) }
+    }
 }
 
 #[macro_export]
@@ -673,6 +701,15 @@ macro_rules! define_exports_impl {
     ) => {
         $crate::define_exports_impl!{@exports [$name] ($num_entries) ($($node_names,)* $curr_fn_name,) ($($export_decls)*) ($($export_fns)*) ($($export_c_entries)*) $($t)* }
     };
+
+    // Other items: Ignored.
+    (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)
+        // Ignore other items as they are handled by declare_nodes_impl:
+        $other_item:item
+        $($t:tt)*
+    ) => {
+        $crate::define_exports_impl!{@exports [$name] ($num_entries) ($($node_names,)*) ($($export_decls)*) ($($export_fns)*) ($($export_c_entries)*) $($t)* }
+    };
 }
 
 #[macro_export]
@@ -681,7 +718,7 @@ macro_rules! render_graph {
     ($rg_vis:vis mod $rg_name:ident { $($t:tt)* }) => {
         $rg_vis mod $rg_name {
             use $crate::{*};
-            $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () (
+            $crate::declare_nodes_impl!{@nodes [$rg_vis $rg_name] () () (
                 // TODO: Stick built-in nodes here until we support importing nodes from a different module.
                 [graphics] node clear_color( [writeonly(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor );
                 [graphics] node clear_color_regions( [readwrite(render_target, clear)] t: &$crate::Texture, data : $crate::Vec4 : SV_ClearColor, num_rects: u32, rects: $crate::IVec4 );
