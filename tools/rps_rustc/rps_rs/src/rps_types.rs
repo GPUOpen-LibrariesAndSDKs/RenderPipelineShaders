@@ -902,12 +902,20 @@ pub const fn uint3(x: u32, y: u32, z: u32) -> glam::UVec3 {
     glam::uvec3(x,y,z)
 }
 
+pub const fn uint2(x: u32, y: u32) -> glam::UVec2 {
+    glam::uvec2(x,y)
+}
+
 pub const fn float4(x: f32, y: f32, z: f32, w: f32) -> glam::Vec4 {
     glam::vec4(x,y,z,w)
 }
 
 pub const fn float3(x: f32, y: f32, z: f32) -> glam::Vec3 {
     glam::vec3(x,y,z)
+}
+
+pub const fn float2(x: f32, y: f32) -> glam::Vec2 {
+    glam::vec2(x,y)
 }
 
 /// Impl RpsTypeInfoTrait trait for given types
