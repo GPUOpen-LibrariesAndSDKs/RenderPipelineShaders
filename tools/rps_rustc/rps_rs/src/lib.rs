@@ -594,22 +594,6 @@ macro_rules! declare_nodes_impl {
 #[macro_export]
 #[doc(hidden)]
 #[allow(unused_macros)]
-macro_rules! expand_entry_arg_ptrs {
-    ($pp_args:ident, ($($output:stmt)*), $index:expr, ) => {
-        $($output)*
-    };
-
-    ($pp_args:ident, ($($output:stmt)*), $index:expr, ($arg_name:ident : $arg_type:tt), $($tail:tt)* ) => {
-        expand_entry_arg_ptrs!{$pp_args, (
-            $($output)*
-            let $arg_name = unsafe { &*( $pp_args[$index] as *const $arg_type ) };
-        ), $index + 1, $($tail)*}
-    };
-}
-
-#[macro_export]
-#[doc(hidden)]
-#[allow(unused_macros)]
 macro_rules! define_exports_impl {
     // Finalize exports:
     (@exports [$name:ident] ($num_entries:expr) ($($node_names:ident,)*) ($($export_decls:tt)*) ($($export_fns:item)*) ($($export_c_entries:item)*)) => {
