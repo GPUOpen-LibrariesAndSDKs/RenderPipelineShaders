@@ -338,7 +338,7 @@ fn emit_wrapper_arg_forwarding_stmts(
         },
         Type::Ptr(ty_ptr) => {
             out_stmts.push(parse_quote!{
-                let #arg_name = unsafe { pp_args[#arg_index] as #ty_ptr };
+                let #arg_name = unsafe {*(pp_args[#arg_index] as *const #ty_ptr)};
             });
         },
         Type::Slice(_ty_slice) => {
@@ -497,10 +497,10 @@ pub fn derive_rps_ffi_type(item: TokenStream) -> TokenStream {
 
     let output = quote! {
 
-        impl RpsTypeInfoTrait for & #ident {
-            const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
+        impl rps_rs::rpsl_runtime::RpsTypeInfoTrait for & #ident {
+            const RPS_TYPE_INFO : rps_rs::rpsl_runtime::CRpsTypeInfo = rps_rs::rpsl_runtime::CRpsTypeInfo {
                 size: std::mem::size_of::<#ident>() as u16,
-                id: RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
+                id: rps_rs::rpsl_runtime::RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
             };
 
             fn to_c_ptr(&self) -> *const c_void {
@@ -508,10 +508,10 @@ pub fn derive_rps_ffi_type(item: TokenStream) -> TokenStream {
             }
         }
 
-        impl RpsTypeInfoTrait for #ident {
-            const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
+        impl rps_rs::rpsl_runtime::RpsTypeInfoTrait for #ident {
+            const RPS_TYPE_INFO : rps_rs::rpsl_runtime::CRpsTypeInfo = rps_rs::rpsl_runtime::CRpsTypeInfo {
                 size: std::mem::size_of::<#ident>() as u16,
-                id: RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
+                id: rps_rs::rpsl_runtime::RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as u16,
             };
         }
     };

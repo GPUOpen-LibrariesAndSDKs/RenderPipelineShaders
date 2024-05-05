@@ -4,6 +4,8 @@ use core::ffi::c_void;
 
 use crate::rpsl_runtime::{RpsTypeInfoTrait, RpsBuiltInTypeIds, CRpsTypeInfo, CRpsResourceDesc};
 
+extern crate self as rps_rs;
+
 #[non_exhaustive]
 #[repr(u32)]
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -874,6 +876,20 @@ impl<U: RpsTypeInfoTrait, const N: usize> RpsTypeInfoTrait for &[U; N] {
 
     fn to_c_ptr(&self) -> *const c_void {
         (*self) as *const _ as *const c_void
+    }
+}
+
+// Treat pointers as a 2-level indirection for now
+// to allow passing arbitary Rust structures across FFI.
+// Callers must guarantee the lifetime of the pointee.
+impl<T> RpsTypeInfoTrait for *const T {
+    const RPS_TYPE_INFO : CRpsTypeInfo = CRpsTypeInfo {
+        size: std::mem::size_of::<*const T>() as _,
+        id: RpsBuiltInTypeIds::RPS_TYPE_OPAQUE as _,
+    };
+
+    fn to_c_ptr(&self) -> *const c_void {
+        self as * const _ as *const c_void
     }
 }
 
