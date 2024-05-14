@@ -1,9 +1,10 @@
-# Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2024 Advanced Micro Devices, Inc.
 #
 # This file is part of the AMD Render Pipeline Shaders SDK which is
-# released under the AMD INTERNAL EVALUATION LICENSE.
+# released under the MIT LICENSE.
 #
 # See file LICENSE.txt for full license details.
+
 
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE} )
 

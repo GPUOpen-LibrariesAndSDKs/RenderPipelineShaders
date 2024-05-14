@@ -1,70 +1,20 @@
-ADVANCED MICRO DEVICES, INC. INTERNAL EVALUATION LICENSE
+Copyright (c) 2024 Advanced Micro Devices, Inc.
 
-Software: AMD Beta Render Pipeline Shaders SDK
+Permission is hereby granted, free of charge, to any person obtaining a copy of 
+this software and associated documentation files (the “Software”), to deal in 
+the Software without restriction, including without limitation the rights to use, 
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+Software, and to permit persons to whom the Software is furnished to do so, 
+subject to the following conditions:
 
-BETA PROGRAM: THIS IS A BETA PROGRAM AND THE SOFTWARE YOU ARE RECEIVING MAY NOT BE THE FINAL RELEASE. IT MAY NOT WORK THE WAY THE FINAL VERSION WILL. CERTAIN FEATURES MAY BE MISSING OR DISABLED. ANY AND ALL USE OF THE SOFTWARE AND DOCUMENTATION IS AT YOUR SOLE RISK AND ADVANCED MICRO DEVICES, INC ("AMD") IS UNDER NO OBLIGATION TO PROVIDE TECHNICAL SUPPORT, UPDATES, BUG FIXES, OR MAINTENANCE OF ANY KIND FOR THE SOFTWARE OR DOCUMENTATION. AMD MAKES NO REPRESENTATIONS THAT A FINAL VERSION OF THE SOFTWARE OR DOCUMENTATION WILL BE RELEASED OR REPLACE THE VERSION YOU HAVE RECEIVED AS PART OF THE BETA PROGRAM. AMD MAY CHANGE THE SOFTWARE, INCLUDING ITS FEATURES AND FUNCTIONALITIES, FOR THE FINAL RELEASE.
+The above copyright notice and this permission notice shall be included in all 
+copies or substantial portions of the Software.
 
-THIS IS A LEGAL AGREEMENT ("AGREEMENT") BETWEEN YOU AND AMD.  YOUR USE OF THE AMD SOFTWARE IDENTIFIED ABOVE AND RELATED DOCUMENTATION (AS DEFINED BELOW), ARE SUBJECT TO THE FOLLOWING TERMS AND CONDITIONS. IF YOU ARE ENTERING INTO THIS AGREEMENT ON BEHALF OF A COMPANY OR OTHER LEGAL ENTITY, YOU REPRESENT THAT YOU HAVE THE LEGAL AUTHORITY TO BIND THE ENTITY TO THIS AGREEMENT, IN WHICH CASE "YOU" WILL MEAN THE ENTITY YOU REPRESENT.
-
-DO NOT USE THIS SOFTWARE OR ANY OF THE DOCUMENTATION UNTIL YOU HAVE CAREFULLY READ AND AGREED TO THE FOLLOWING TERMS AND CONDITIONS.  IF YOU DO NOT AGREE TO THE TERMS OF THIS AGREEMENT, DO NOT INSTALL, COPY, OR USE THE SOFTWARE OR ANY DOCUMENTATION. BY INSTALLING, COPYING, OR USING THE SOFTWARE OR DOCUMENTATION, YOU ARE EXPRESSLY AGREEING TO ALL OF THE TERMS AND CONDITIONS OF THIS AGREEMENT.
-
-1.	DEFINITIONS.
-
-1.1 "Derivative Works" means any work, revision, modification or adaptation made to or derived from the Software or any work that incorporates the Software in whole or in part.
-
-1.2	"Documentation" means documentation, associated, included, or provided in connection with the Software, or any portion thereof, including but not limited to information provided online, electronically, or as install scripts.
-
-1.3	"Free Software License" means an open source or other license that requires, as a condition of use, modification or distribution, that any resulting software must be (a) disclosed or distributed in source code form; (b) licensed for the purpose of making derivative works; or (c) redistributable at no charge.
-
-1.4 "Intellectual Property Rights" means all copyrights, trademarks, trade secrets, patents, mask works, and all related, similar, or other intellectual property rights recognized in any jurisdiction worldwide, including all applications and registrations with respect thereto.
-
-1.5	"Software" means the software identified above, including (a) Documentation, (b) Sample Code, (c) tools and utilities, and (d) header files.
-
-1.7	"Object Code" means machine readable computer programming code files, which is not in a human readable form.
-
-1.8	"Sample Code" means the header files and Source Code identified within the SDK as sample code.
-
-1.9	"Source Code" means computer programming code in the human readable form and related system level documentation, including all associated comments, symbols and any procedural code such as job control language.
-
-1.10 "Your Products" means any software developed or modified by You using the Software, and which may include any Sample Code and/or Derivative Works.
-
-2.	LICENSE.  Subject to the terms and conditions of this Agreement, AMD hereby grants You a non-exclusive, royalty-free, revocable, non-transferable, non-assignable limited copyright license to:
-
-a)	install, use and copy the Software internally to evaluate and test the Software in a non-production environment; and
-b)	create Derivative Works solely for internal use in furtherance of the Licensed Purpose;
-
-3.	RESTRICTIONS.  Except for the limited copyright license expressly granted in Section 2 herein, You have no other rights in the Software, whether express, implied, arising by estoppel or otherwise.  Further restrictions regarding Your use of the Software are set forth below.  Except as expressly authorized herein, You may not:
-
-a)	modify or create derivative works of the Software;
-b)	distribute, publish, display, sublicense, assign or otherwise transfer the Software;
-c)	decompile, reverse engineer, disassemble or otherwise reduce the Software in Object Code to a human-perceivable form (except as expressly allowed by applicable law but then only to the limited extent of such law);
-d)	alter or remove any copyright, trademark or patent notice(s) in the Software;
-e)	use the Software to: (i) develop inventions directly derived from Confidential Information to seek patent protection; (ii) assist in the analysis of Your patents and patent applications; or (iii) modify Your existing patents or patent applications;
-f)	use the Software in way that requires that the Software or any portion thereof be licensed under a Free Software License; and/or
-g)	use the Software in high-risk contexts, including but not limited to in surgical implants, applications intended to support or sustain life, weapons, nuclear applications, or in other contexts where failure of the Licensed Software could directly cause personal injury, death, or severe property or environmental damage.
-
-4.	OWNERSHIP; THIRD PARTY MATERIALS.  The Software, including all Intellectual Property Rights therein, is and remains the sole and exclusive property of AMD or its licensors, and You shall have no right, title or interest therein except as expressly set forth in this Agreement. Except as expressly provided in Section 2, AMD does not grant, by implication, estoppels or otherwise under any patents, trademarks, copyrights, mask works, trade secret information, intellectual property, license or similar material.  For the avoidance of doubt, nothing in this Agreement shall require AMD to generally release the Licensed Software. The Software may include third party technologies for which You must obtain licenses from parties other than AMD (collectively, "Third Party Materials"). These Third Party Materials are not licensed as part of the Software licensed under this Agreement and are used at Your sole discretion. You are solely responsible for obtaining all applicable Intellectual Property Rights to use the Third Party Materials. In addition, the Software may include code or content subject to an open source or similar license ("Open Source Component"). To the extent that an Open Source Component is subject to a license that is inconsistent with this Agreement, then such Open Source Component shall be governed solely by the applicable license.
-
-5.	FEEDBACK.  You have no obligation to give AMD any suggestions, comments or other feedback ("Feedback") relating to the Software.  However, AMD may use and include any Feedback that it receives from You to improve the Software or other AMD products, software and technologies.  Accordingly, for any Feedback You provides to AMD, You grant AMD and its affiliates and subsidiaries a worldwide, non-exclusive, irrevocable, royalty-free, fully paid up, perpetual license to, directly or indirectly, use, reproduce, license, sublicense, distribute, make, have made, sell and otherwise commercialize the Feedback in the Software or other AMD products or technologies. You further agree not to provide any Feedback that (a) You know is subject to any Intellectual Property Rights of any third party or (b) is subject to license terms which seek to require any products incorporating or derived from such Feedback, or other AMD Intellectual Property, to be licensed to or otherwise shared with any third party.
-
-6.	SUPPORT AND UPDATES.  AMD is under no obligation to provide any kind of support under this Agreement.  AMD may, in its sole discretion, provide to You updates to the Software, and such updates will be covered as Software under this Agreement."
-
-7.	WARRANTY DISCLAIMER, LIMITATION OF LIABILITY AND INDEMNIFICATION.
-
-7.1	Disclaimer OF Warranty. THE SOFTWARE ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.  AMD DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, THAT THE SOFTWARE WILL RUN UNINTERRUPTED OR ERROR-FREE OR THOSE ARISING FROM CUSTOM OF TRADE OR COURSE OF USAGE.  THE ENTIRE RISK ASSOCIATED WITH THE USE OF THE SOFTWARE IS ASSUMED BY YOU.  Some jurisdictions do not allow the exclusion of implied warranties, so the above exclusion may not apply to You.
-
-7.2	Limitation of Liability.  AMD AND ITS LICENSORS WILL NOT, UNDER ANY CIRCUMSTANCES BE LIABLE TO YOU FOR ANY PUNITIVE, DIRECT, INCIDENTAL, INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES ARISING FROM USE OF THE SOFTWARE OR THIS AGREEMENT EVEN IF AMD AND ITS LICENSORS HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.  In no event shall AMD's total liability to You for all damages, losses, and causes of action (whether in contract, tort (including negligence) or otherwise) exceed the amount of $100 USD.
-
-7.3	Indemnification.  You agree to defend, indemnify and hold harmless AMD and its licensors, and any of their directors, officers, employees, affiliates or agents from and against any and all loss, damage, liability and other expenses (including reasonable attorneys' fees), resulting from a) a claim or allegation that the Derivative Works violate a third party Intellectual Property Rights, b) violation of the terms and conditions of this Agreement by You.
-
-10.	CONFIDENTIALITY. You shall protect the Software and any information related thereto (collectively, "Confidential Information") by using the same degree of care, but no less than a reasonable degree of care, to prevent the unauthorized use, dissemination or publication of the Confidential Information as You use to protect Your own confidential information of a like nature.   You shall not disclose any Confidential Information disclosed hereunder to any third party and shall limit disclosure of Confidential Information to only those of Your employees and contractors with a need to know and who are bound by confidentiality obligations with You at least as restrictive as those contained in this Agreement.  You shall be responsible for Your employees and contractors adherence to the terms of this Agreement.  You may disclose Confidential Information in accordance with a judicial or other governmental order, provided that You either (a) give AMD reasonable notice prior to such disclosure to allow AMD a reasonable opportunity to seek a protective order or equivalent or (b) obtain written assurance from the applicable judicial or governmental entity that it will afford the Confidential Information the highest level of protection afforded under applicable law or regulation.
-
-11.	TERMINATION AND SURVIVAL. AMD may terminate the Agreement immediately upon the breach by You or any sublicensee of any of the terms of the Agreement. You may terminate the Agreement upon written notice to AMD and destruction of the Software You accessed hereunder.  The termination of this Agreement shall: (i) immediately result in the termination of all rights granted to You to in Section 2, including the right to install, use, and distribute the Software and create and distribute Derivative Works through multiple tiers of distribution; and (ii) have no effect on any sublicenses previously granted by You to end users under Section 2(c) and which are compliant with all terms and conditions of this Agreement, which sublicenses shall survive in accordance with their terms. Upon termination or expiration of this Agreement, You will cease using and destroy or return to AMD all copies of the Confidential Information, including but not limited to the Software. Upon termination or expiration of this Agreement, all provisions survive except for Section 2.
-
-12.	EXPORT RESTRICTIONS.  You shall adhere to all applicable U.S., European, and other export laws, including but not limited to the U.S. Export Administration Regulations ("EAR") (15 C.F.R Sections 730-774), and E.U. Council Regulation (EC) No 428/2009 of 5 May 2009.  Further, pursuant to Section 740.6 of the EAR, You hereby certify that, except pursuant to a license granted by the United States Department of Commerce Bureau of Industry and Security or as otherwise permitted pursuant to a License Exception under the EAR, You will not (1) export, re-export or release to a national of a country in Country Groups D:1, E:1 or E:2 any restricted technology, software, or source code it receives from AMD, or (2) export to Country Groups D:1, E:1 or E:2 the direct product of such technology or software, if such foreign produced direct product is subject to national security controls as identified on the Commerce Control List (currently found in Supplement 1 to Part 774 of EAR).  For the most current Country Group listings, or for additional information about the EAR or Your obligations under those regulations, please refer to the U.S. Bureau of Industry and Security"s website at http://www.bis.doc.gov/.
-
-13.	GOVERNMENT END USERS. The Software are provided with "RESTRICTED RIGHTS."  Use, duplication or disclosure by the Government is subject to restrictions as set forth in FAR 52.227-14 and DFAR 252.227-7013, et seq., or its successor.  Use of the Software by the Government constitutes acknowledgment of AMD"s proprietary rights in it.
-
-14.	GOVERNING LAW.  This Agreement is made under and shall be construed according to the laws of the State of Texas, excluding conflicts of law rules.  Each party submits to the jurisdiction of the state and federal courts of Travis County and the Western District of Texas for the purposes of this Agreement.  You acknowledge that Your breach of this Agreement may cause irreparable damage and You agree that AMD shall be entitled to seek injunctive relief under this Agreement, as well as such further relief as may be granted by a court of competent jurisdiction.
-
-15. GENERAL PROVISIONS.  You may not assign this Agreement without the prior written consent of AMD and any assignment without such consent will be null and void.  This Agreement may be executed in multiple counterparts, each of which shall constitute a signed original.  Any facsimile or electronic image of this Agreement or writing referenced herein shall be valid and acceptable for all purposes as if it were an original.  The Parties do not intend that any agency or partnership relationship be created between them by this Agreement.  Each provision of this Agreement shall be interpreted in such a manner as to be effective and valid under applicable law.  However, in the event that any provision of this Agreement becomes or is declared unenforceable by any court of competent jurisdiction, such provision shall be deemed deleted and the remainder of this Agreement shall remain in full force and effect.  Agreement sets forth the entire agreement and understanding between the Parties with respect to the Software and supersedes and merges all prior oral and written agreements, discussions and understandings between them regarding the subject matter of this Agreement.  No waiver or modification of any provision of this Agreement shall be binding unless made in writing and signed by an authorized representative of each Party.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, 
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND 
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR 
+OTHER DEALINGS IN THE SOFTWARE.

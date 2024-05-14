@@ -1,7 +1,7 @@
-@REM Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+@REM Copyright (c) 2024 Advanced Micro Devices
 @REM
 @REM This file is part of the AMD Render Pipeline Shaders SDK which is
-@REM released under the AMD INTERNAL EVALUATION LICENSE.
+@REM released under the MIT LICENSE.
 @REM
 @REM See file LICENSE.txt for full license details.
 

@@ -1,9 +1,12 @@
 # AMD Render Pipeline Shaders (RPS) SDK
 
-Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
+Copyright (c) 2024 Advanced Micro Devices, Inc.
 
-The AMD Render Pipeline Shaders (RPS) SDK is released under the AMD INTERNAL EVALUATION LICENSE. Please see file
+The AMD Render Pipeline Shaders (RPS) SDK is released under the MIT LICENSE. Please see file
 [LICENSE.txt](LICENSE.txt) for full license details.
+
+The AMD Render Pipeline Shaders (RPS) SDK Open Beta was previously released under the 
+AMD INTERNAL EVALUATION LICENSE.
 
 ## Introduction
 

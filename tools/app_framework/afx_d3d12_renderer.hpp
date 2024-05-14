@@ -1,4 +1,4 @@
-// Modifications Copyright (C) 2023 Advanced Micro Devices, Inc.
+// Modifications Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 // Copyright (c) Microsoft. All rights reserved.
 //
