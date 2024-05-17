@@ -299,7 +299,7 @@ protected:
             REQUIRE(accessInfo.range.arrayLayers == 1);
             REQUIRE(accessInfo.range.baseMipLevel == 0);
             REQUIRE(accessInfo.range.mipLevels == 1);
-            REQUIRE(accessInfo.viewFormat == RPS_FORMAT_B8G8R8A8_UNORM);
+            REQUIRE(accessInfo.viewFormat == rpsFormatFromVK(m_swapChainFormat.format));
             REQUIRE(resourceAccessInfo.access.accessFlags == accessInfo.access.accessFlags);
             REQUIRE(resourceAccessInfo.access.accessStages == accessInfo.access.accessStages);
             REQUIRE(resourceAccessInfo.range.baseArrayLayer == accessInfo.range.baseArrayLayer);
@@ -452,14 +452,22 @@ protected:
         vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoWriteDepthStencil);
 
         uint32_t drawId = 0;
-        vkCmdPushConstants(
-            cmdBuf, m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, PushConstOffsetDrawId, sizeof(drawId), &drawId);
+        vkCmdPushConstants(cmdBuf,
+                           m_pipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           PushConstOffsetDrawId,
+                           sizeof(drawId),
+                           &drawId);
         vkCmdSetStencilReference(cmdBuf, VK_STENCIL_FACE_FRONT_AND_BACK, 0x1);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
 
         drawId = 1;
-        vkCmdPushConstants(
-            cmdBuf, m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, PushConstOffsetDrawId, sizeof(drawId), &drawId);
+        vkCmdPushConstants(cmdBuf,
+                           m_pipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           PushConstOffsetDrawId,
+                           sizeof(drawId),
+                           &drawId);
         vkCmdSetStencilReference(cmdBuf, VK_STENCIL_FACE_FRONT_AND_BACK, 0x2);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     }
@@ -521,8 +529,12 @@ protected:
 
         vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoReadDepthWriteStencil);
         float depth = 0.25f;
-        vkCmdPushConstants(
-            cmdBuf, m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, PushConstOffsetFlagDepth, sizeof(depth), &depth);
+        vkCmdPushConstants(cmdBuf,
+                           m_pipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           PushConstOffsetFlagDepth,
+                           sizeof(depth),
+                           &depth);
         vkCmdSetStencilReference(cmdBuf, VK_STENCIL_FACE_FRONT_AND_BACK, 0x2);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     }
@@ -591,8 +603,12 @@ protected:
 
         vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoReadDepthStencil);
         const float depth = 0.5f;
-        vkCmdPushConstants(
-            cmdBuf, m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, PushConstOffsetFlagDepth, sizeof(depth), &depth);
+        vkCmdPushConstants(cmdBuf,
+                           m_pipelineLayout,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           PushConstOffsetFlagDepth,
+                           sizeof(depth),
+                           &depth);
         vkCmdSetStencilReference(cmdBuf, VK_STENCIL_FACE_FRONT_AND_BACK, 0x3);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     }
@@ -644,8 +660,8 @@ private:
 
         ThrowIfFailedVK(vkCreateDescriptorSetLayout(m_device, &setLayoutCI, nullptr, &m_descriptorSetLayout));
 
-        VkPushConstantRange pushConstRanges[] = {{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4},
-                                                 {VK_SHADER_STAGE_VERTEX_BIT, 4, 8}};
+        VkPushConstantRange pushConstRanges[] = {{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 8},
+                                                 {VK_SHADER_STAGE_VERTEX_BIT, 0, 8}};
 
         VkPipelineLayoutCreateInfo plCI = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         plCI.setLayoutCount             = 1;

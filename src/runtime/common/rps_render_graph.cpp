@@ -34,10 +34,9 @@ namespace rps
 
         if (pCreateInfo)
         {
-            (*ppRenderGraph)->OnInit(renderGraphCreateInfo);
+            RPS_V_RETURN((*ppRenderGraph)->OnInit(renderGraphCreateInfo));
         }
 
-        
         if (pRuntimeDevice)
         {
             if ((*ppRenderGraph)->m_createInfo.numPhases == 0)

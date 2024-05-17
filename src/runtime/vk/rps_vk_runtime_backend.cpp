@@ -1498,7 +1498,7 @@ namespace rps
 
                     const bool bResHasMemoryBound = resInstance.hRuntimeResource && !resInstance.isPendingCreate;
 
-                    if (!resInstance.isAliased && bResHasMemoryBound &&
+                    if (resInstance.isAccessed && !resInstance.isAliased && bResHasMemoryBound &&
                         (resInstance.initialAccess.accessFlags != RPS_ACCESS_UNKNOWN))
                     {
                         for (auto& finalAccess :
