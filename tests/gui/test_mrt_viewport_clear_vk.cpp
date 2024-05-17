@@ -260,8 +260,6 @@ protected:
 
         VkCommandBuffer cmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
-        vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoBlt);
-
         VkDescriptorSet ds;
         ThrowIfFailedVK(AllocFrameDescriptorSet(&m_descriptorSetLayout, 1, &ds));
 
@@ -363,6 +361,7 @@ protected:
         vkUpdateDescriptorSets(m_device, _countof(writeDescriptorSet), writeDescriptorSet, 0, nullptr);
 
         vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &ds, 0, nullptr);
+        vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoBlt);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     }
 
@@ -391,8 +390,6 @@ protected:
 
         VkCommandBuffer cmdBuf = rpsVKCommandBufferFromHandle(pContext->hCommandBuffer);
 
-        vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoBltCube);
-
         VkDescriptorSet ds;
         ThrowIfFailedVK(AllocFrameDescriptorSet(&m_descriptorSetLayout, 1, &ds));
 
@@ -404,6 +401,7 @@ protected:
         vkUpdateDescriptorSets(m_device, _countof(writeDescriptorSet), writeDescriptorSet, 0, nullptr);
 
         vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1, &ds, 0, nullptr);
+        vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, m_psoBltCube);
         vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     }
 
