@@ -112,7 +112,7 @@ namespace rps
                     {
                         auto& resInstance = resourceInstances[iRes];
 
-                        if (!resInstance.isAliased && resInstance.hRuntimeResource &&
+                        if (resInstance.isAccessed && !resInstance.isAliased && resInstance.hRuntimeResource &&
                             (resInstance.initialAccess.accessFlags != RPS_ACCESS_UNKNOWN))
                         {
                             for (auto& finalAccess :

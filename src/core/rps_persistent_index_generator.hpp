@@ -21,10 +21,13 @@ namespace rps
             uint32_t numResources[NumResourceKinds];
             uint32_t localIndex;
             uint32_t numChildren;
+            uint32_t childrenIdBase;
 
             BlockInfo()
-                : localIndex(RPS_INDEX_NONE_U32)
+                : numResources{}
+                , localIndex(RPS_INDEX_NONE_U32)
                 , numChildren(0)
+                , childrenIdBase(RPS_INDEX_NONE_U32)
             {
             }
 
@@ -55,18 +58,20 @@ namespace rps
             : m_numIndicesTotal{}
             , m_blocks(&allocator)
             , m_blockStack(&allocator)
+            , m_blockInstanceStack(&allocator)
             , m_blockInstances(&allocator)
         {
         }
 
-        RpsResult EnterFunction(uint32_t                blockId,
-                                ConstArrayRef<uint32_t> resourceCounts,
+        RpsResult EnterFunction(ConstArrayRef<uint32_t> resourceCounts,
                                 uint32_t                localLoopIndex,
                                 uint32_t                numChildren)
         {
-            RPS_ASSERT(m_blockStack.empty());  // Currently everything is inlined.
+            uint32_t blockId = RPS_INDEX_NONE_U32;
 
-            InitBlockInfo(blockId, resourceCounts, localLoopIndex, numChildren);
+            RPS_V_RETURN(InitBlockInfo(&blockId, resourceCounts, localLoopIndex, numChildren));
+
+            RPS_CHECK_ALLOC(m_blockStack.push_back(blockId));
 
             RPS_ASSERT(m_blockInstances.empty() || (m_blockInstances.front().blockId == 0));
 
@@ -87,35 +92,50 @@ namespace rps
             return RPS_OK;
         }
 
-        RpsResult EnterLoop(uint32_t                blockId,
-                            ConstArrayRef<uint32_t> resourceCounts,
+        void BeginCallEntry()
+        {
+            m_blockStack.clear();
+        }
+
+        RpsResult EnterLoop(ConstArrayRef<uint32_t> resourceCounts,
                             uint32_t                localLoopIndex,
                             uint32_t                numChildren)
         {
-            RPS_V_RETURN(InitBlockInfo(blockId, resourceCounts, localLoopIndex, numChildren));
+            uint32_t blockId = RPS_INDEX_NONE_U32;
 
-            RPS_CHECK_ALLOC(m_blockStack.push_back(m_currentBlockInstanceId));
+            RPS_V_RETURN(InitBlockInfo(&blockId, resourceCounts, localLoopIndex, numChildren));
+
+            RPS_CHECK_ALLOC(m_blockStack.push_back(blockId));
+
+            RPS_CHECK_ALLOC(m_blockInstanceStack.push_back(m_currentBlockInstanceId));
 
             return RPS_OK;
         }
 
-        RpsResult ExitLoop(uint32_t blockId)
+        RpsResult ExitLoop()
         {
-            const uint32_t parentBlockInstance = m_blockStack.back();
+            RPS_RETURN_ERROR_IF(m_blockStack.empty(), RPS_ERROR_INVALID_PROGRAM);
 
             m_blockStack.pop_back();
+
+            const uint32_t parentBlockInstance = m_blockInstanceStack.back();
+            m_blockInstanceStack.pop_back();
 
             m_currentBlockInstanceId = parentBlockInstance;
 
             return RPS_OK;
         }
 
-        RpsResult LoopIteration(uint32_t blockId)
+        RpsResult LoopIteration()
         {
-            RPS_ASSERT(!m_blockStack.empty());
+            RPS_RETURN_ERROR_IF(m_blockStack.empty(), RPS_ERROR_INVALID_PROGRAM);
 
-            const uint32_t parentId        = m_blockStack.back();
+            RPS_ASSERT(!m_blockInstanceStack.empty());
+
+            const uint32_t parentId        = m_blockInstanceStack.back();
             const bool     bFirstIteration = (parentId == m_currentBlockInstanceId);
+
+            const uint32_t blockId = m_blockStack.back();
 
             const BlockInfo& currBlockInfo = m_blocks[blockId];
 
@@ -157,6 +177,7 @@ namespace rps
 
             m_blocks.reset();
             m_blockStack.reset();
+            m_blockInstanceStack.reset();
             m_blockInstances.reset();
 
             m_currentBlockInstanceId = RPS_INDEX_NONE_U32;
@@ -168,6 +189,7 @@ namespace rps
 
             m_blocks.clear();
             m_blockStack.clear();
+            m_blockInstanceStack.clear();
             m_blockInstances.clear();
 
             m_currentBlockInstanceId = RPS_INDEX_NONE_U32;
@@ -187,14 +209,43 @@ namespace rps
         }
 
     private:
-        RpsResult InitBlockInfo(uint32_t                blockId,
+
+        RpsResult InitBlockInfo(uint32_t*               pBlockId,
                                 ConstArrayRef<uint32_t> resourceCounts,
                                 uint32_t                localLoopIndex,
                                 uint32_t                numChildren)
         {
-            if (blockId >= m_blocks.size())
+            uint32_t blockId = 0;
+
+            if (m_blockStack.empty())
             {
-                m_blocks.resize(blockId + 1, BlockInfo());
+                RPS_RETURN_ERROR_IF(localLoopIndex != RPS_INDEX_NONE_U32, RPS_ERROR_INVALID_PROGRAM);
+
+                localLoopIndex = 0;
+
+                if (m_blocks.empty())
+                {
+                    m_blocks.reserve(1 + numChildren);
+                    m_blocks.resize(1, BlockInfo());
+                }
+            }
+            else
+            {
+                const uint32_t parentBlockId = m_blockStack.back();
+
+                // Lazily alloc block range for children of the parent:
+
+                if (m_blocks[parentBlockId].childrenIdBase == RPS_INDEX_NONE_U32)
+                {
+                    const uint32_t numChildrenOfParent = m_blocks[parentBlockId].numChildren;
+
+                    m_blocks[parentBlockId].childrenIdBase = uint32_t(m_blocks.size());
+                    m_blocks.resize(m_blocks.size() + numChildrenOfParent, BlockInfo());
+                }
+
+                RPS_RETURN_ERROR_IF(localLoopIndex >= m_blocks[parentBlockId].numChildren, RPS_ERROR_INVALID_PROGRAM);
+
+                blockId = m_blocks[parentBlockId].childrenIdBase + localLoopIndex;
             }
 
             auto& blockInfo = m_blocks[blockId];
@@ -212,6 +263,8 @@ namespace rps
                                         (blockInfo.numChildren != numChildren),
                                     RPS_ERROR_INVALID_PROGRAM);
             }
+
+            *pBlockId = blockId;
 
             return RPS_OK;
         }
@@ -265,6 +318,7 @@ namespace rps
 
         ArenaVector<BlockInfo>     m_blocks;
         ArenaVector<uint32_t>      m_blockStack;
+        ArenaVector<uint32_t>      m_blockInstanceStack;
         ArenaVector<BlockInstance> m_blockInstances;
 
         uint32_t m_currentBlockInstanceId = RPS_INDEX_NONE_U32;

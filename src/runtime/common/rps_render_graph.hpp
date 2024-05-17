@@ -65,6 +65,7 @@ namespace rps
         bool                    isAliased : 1;
         bool                    isPendingCreate : 1;
         bool                    isPendingInit : 1;
+        bool                    isAccessed : 1;
         bool                    isMutableFormat : 1;
         bool                    bBufferFormattedWrite : 1;
         bool                    bBufferFormattedRead : 1;

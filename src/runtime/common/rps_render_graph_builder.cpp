@@ -239,52 +239,8 @@ namespace rps
 
         auto& nodeImpl = pCurrProgram->GetNodeImpl(localNodeDeclId);
 
-        if (nodeImpl.type == Subprogram::RpslNodeImpl::Type::RpslEntry)
-        {
-            RPS_ASSERT(nodeImpl.pSubprogram->GetEntry());
-
-            // Dummy BeginSubroutine node
-            RpsNodeId beginSubroutine = RPS_CMD_ID_INVALID;
-
-            auto subRoutineNodeDecl = GetBuiltInCmdNodeInfo(RPS_BUILTIN_NODE_BEGIN_SUBROUTINE);
-            RPS_V_RETURN(subRoutineNodeDecl.Result());
-
-            RPS_V_RETURN(AddCmdNode(
-                RPS_BUILTIN_NODE_BEGIN_SUBROUTINE, subRoutineNodeDecl, nodeLocalId, {}, nullptr, 0, &beginSubroutine));
-            RPS_ASSERT((beginSubroutine != RPS_CMD_ID_INVALID) && "invalid RenderGraphBuilder::AddCmdNode impl");
-
-            // TODO: using CmdId as global persistent ProgramInstanceId for now.
-            // TODO: need to version nodeImpl.pSubprogram in case it's recreated at the same address.
-            auto             pSubprogramInstanceId = &m_cmdNodes.GetSlot(beginSubroutine)->programInstanceId;
-            ProgramInstance* pSubprogramInstance =
-                m_renderGraph.GetOrCreateProgramInstance(nodeImpl.pSubprogram, *pSubprogramInstanceId);
-
-            if (pCurrProgram->GetEntry())
-            {
-                // Fast path, both caller and callee are RPSL functions,
-                // call the function directly without extra context setup.
-
-                ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
-
-                (nodeImpl.pSubprogram->GetEntry()->pfnEntry)(
-                    uint32_t(args.size()), args.data(), RPSL_ENTRY_CALL_SUBPROGRAM);
-            }
-            else
-            {
-                ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
-
-                RpslExecuteInfo callInfo = {};
-                callInfo.pProgram        = nodeImpl.pSubprogram;
-                callInfo.ppArgs          = args.data();
-                callInfo.numArgs         = uint32_t(args.size());
-
-                // Temp - Remove pRpslHost param when making RpslHost local context.
-                RPS_V_RETURN(pRpslHost->Execute(callInfo));
-            }
-
-            *pOutCmdId = beginSubroutine;
-        }
-        else
+        if ((nodeImpl.type == Subprogram::RpslNodeImpl::Type::Callback) ||
+            (nodeImpl.type == Subprogram::RpslNodeImpl::Type::Unknown)) // Use default callback for Unknown type.
         {
             auto pNodeDecl = pCurrProgram->GetSignature()->GetNodeDecl(localNodeDeclId);  // TODO: Handle dynamic nodes
             RPS_ASSERT(pNodeDecl->params.size() == args.size());
@@ -312,6 +268,73 @@ namespace rps
             RPS_V_RETURN(AddCmdNode(
                 localNodeDeclId, pNodeDecl, nodeLocalId, callback, args.data(), uint32_t(args.size()), pOutCmdId, callFlags));
             RPS_ASSERT((*pOutCmdId != RPS_CMD_ID_INVALID) && "invalid RenderGraphBuilder::AddCmdNode impl");
+        }
+        else if ((nodeImpl.type == Subprogram::RpslNodeImpl::Type::RpslEntry) ||
+                 (nodeImpl.type == Subprogram::RpslNodeImpl::Type::DynamicRpslEntry))
+        {
+            // Dummy BeginSubroutine node
+            RpsNodeId beginSubroutine = RPS_CMD_ID_INVALID;
+
+            auto subRoutineNodeDecl = GetBuiltInCmdNodeInfo(RPS_BUILTIN_NODE_BEGIN_SUBROUTINE);
+            RPS_V_RETURN(subRoutineNodeDecl.Result());
+
+            RPS_V_RETURN(AddCmdNode(
+                RPS_BUILTIN_NODE_BEGIN_SUBROUTINE, subRoutineNodeDecl, nodeLocalId, {}, nullptr, 0, &beginSubroutine));
+            RPS_ASSERT((beginSubroutine != RPS_CMD_ID_INVALID) && "invalid RenderGraphBuilder::AddCmdNode impl");
+
+            Subprogram* pCalleeSubprogram = nullptr;
+
+            if (nodeImpl.type == Subprogram::RpslNodeImpl::Type::RpslEntry)
+            {
+                RPS_ASSERT(nodeImpl.pSubprogram->GetEntry());
+
+                pCalleeSubprogram = nodeImpl.pSubprogram;
+            }
+            else if (nodeImpl.type == Subprogram::RpslNodeImpl::Type::DynamicRpslEntry)
+            {
+                RPS_ASSERT(nodeImpl.selectSubprogramCallback.pfnSelectDynamicSubprogram);
+
+                pCalleeSubprogram = rps::FromHandle((nodeImpl.selectSubprogramCallback.pfnSelectDynamicSubprogram)(
+                    nodeImpl.selectSubprogramCallback.pUserContext,
+                    args.data(),
+                    uint32_t(args.size())));
+            }
+
+            if (pCalleeSubprogram)
+            {
+                // TODO: using CmdId as global persistent ProgramInstanceId for now.
+                // TODO: need to version nodeImpl.pSubprogram in case it's recreated at the same address.
+                auto             pSubprogramInstanceId = &m_cmdNodes.GetSlot(beginSubroutine)->programInstanceId;
+                ProgramInstance* pSubprogramInstance =
+                    m_renderGraph.GetOrCreateProgramInstance(pCalleeSubprogram, *pSubprogramInstanceId);
+
+                if (pCurrProgram->GetEntry())
+                {
+                    // Fast path, both caller and callee are RPSL functions,
+                    // call the function directly without extra context setup.
+
+                    ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
+
+                    pSubprogramInstance->m_persistentIndexGenerator.BeginCallEntry();
+
+                    (pCalleeSubprogram->GetEntry()->pfnEntry)(
+                        uint32_t(args.size()), args.data(), RPSL_ENTRY_CALL_SUBPROGRAM);
+                }
+                else
+                {
+                    ScopedContext<ProgramInstance*> programContext(&m_pCurrProgram, pSubprogramInstance);
+
+                    RpslExecuteInfo callInfo = {};
+                    callInfo.pProgram        = pCalleeSubprogram;
+                    callInfo.ppArgs          = args.data();
+                    callInfo.numArgs         = uint32_t(args.size());
+
+                    // Temp - Remove pRpslHost param when making RpslHost local context.
+                    RPS_V_RETURN(pRpslHost->Execute(callInfo));
+                }
+            }
+
+            *pOutCmdId = beginSubroutine;
         }
 
         return RPS_OK;

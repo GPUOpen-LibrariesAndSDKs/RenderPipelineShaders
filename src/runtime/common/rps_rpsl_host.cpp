@@ -30,6 +30,9 @@ namespace rps
         {
             RPS_STATIC_ASSERT(RPS_OK == 0, "RPS_OK must be 0");
             RPS_STATIC_ASSERT(!RPS_FAILED(0), "RPS_FAILED no longer maps 0 as a success code");
+
+            m_pGraphBuilder->GetCurrentProgram()->m_persistentIndexGenerator.BeginCallEntry();
+
             RPS_V_RETURN(RpslHostCallEntry(pCurrProgram->GetEntry()->pfnEntry, execInfo.numArgs, execInfo.ppArgs));
         }
         else
@@ -90,16 +93,16 @@ namespace rps
         {
         case RPS_MARKER_FUNCTION_INFO:
             RPS_ASSERT(parentId == UINT32_MAX);
-            result = indexGen.EnterFunction(blockIndex, resourceCounts, localLoopIndex, numChildren);
+            result = indexGen.EnterFunction(resourceCounts, localLoopIndex, numChildren);
             break;
         case RPS_MARKER_LOOP_BEGIN:
-            result = indexGen.EnterLoop(blockIndex, resourceCounts, localLoopIndex, numChildren);
+            result = indexGen.EnterLoop(resourceCounts, localLoopIndex, numChildren);
             break;
         case RPS_MARKER_LOOP_END:
-            result = indexGen.ExitLoop(blockIndex);
+            result = indexGen.ExitLoop();
             break;
         case RPS_MARKER_LOOP_ITERATION:
-            result = indexGen.LoopIteration(blockIndex);
+            result = indexGen.LoopIteration();
             break;
         default:
             break;
@@ -179,9 +182,11 @@ namespace rps
             pResDesc->buffer.sizeInBytesHi = height;
         }
 
-        const uint32_t stableResId =
+        const TResult<uint32_t> stableResId =
             m_pGraphBuilder->GetCurrentProgram()
                 ->m_persistentIndexGenerator.Generate<ProgramInstance::PERSISTENT_INDEX_KIND_RESOURCE_ID>(id);
+
+        RPS_V_RETURN(stableResId.Result());
 
         RPS_V_RETURN(m_pGraphBuilder->DeclareResource(stableResId, pResDesc, {}, pOutResourceId));
 

@@ -371,15 +371,18 @@ namespace rps
 
             AccessTransitionInfo transitionInfo;
 
+            const NodeId lastAccessor = accessState.accessorNodes.empty()
+                                            ? RPS_INDEX_NONE_U32
+                                            : accessState.accessorNodes.Get(m_nodeRefLists).back();
+
+            const bool bAccessedByCurrentNode = (lastAccessor == currNodeId);
+
             if ((accessState.lastTransition == RenderGraph::INVALID_TRANSITION) ||
-                NeedTransition(beforeAccess, newAccess, transitionInfo))
+                NeedTransition(beforeAccess, newAccess, transitionInfo, bAccessedByCurrentNode))
             {
                 // New Transition
-                NodeId lastAccessor = accessState.accessorNodes.empty()
-                                          ? RPS_INDEX_NONE_U32
-                                          : accessState.accessorNodes.Get(m_nodeRefLists).back();
 
-                if (lastAccessor != currNodeId)
+                if (!bAccessedByCurrentNode)
                 {
                     AddNewTransition(graph, currNodeId, accessState, newAccess, resourceId, range);
                 }
@@ -470,7 +473,8 @@ namespace rps
 
         inline bool NeedTransition(const RpsAccessAttr&  before,
                                    const RpsAccessAttr&  after,
-                                   AccessTransitionInfo& accessTransInfo) const
+                                   AccessTransitionInfo& accessTransInfo,
+                                   bool                  bAccessedByCurrentNode) const
         {
             // Coarse filter before calling runtime dependent CalculateAccessTransition:
             // TODO: Get this from runtime device
@@ -486,7 +490,8 @@ namespace rps
                 return accessTransInfo.bTransition;
             }
 
-            if (IsReadOnly(before) && IsReadOnly(after))
+            if ((IsReadOnly(before) && IsReadOnly(after)) ||
+                (bAccessedByCurrentNode && rpsAllBitsSet(before.accessFlags, after.accessFlags)))
             {
                 accessTransInfo.bMergedAccessStates = before != after;
                 accessTransInfo.mergedAccess        = before | after;

@@ -248,10 +248,13 @@ public:
         presentInfo.pSwapchains      = &m_swapChain;
         presentInfo.pImageIndices    = &m_backBufferIndex;
 
+        VkSemaphore presentSemaphore = m_pendingPresentSemaphore;
+
         if (m_pendingPresentSemaphore != VK_NULL_HANDLE)
         {
-            presentInfo.pWaitSemaphores = &m_pendingPresentSemaphore;
-            m_pendingPresentSemaphore   = VK_NULL_HANDLE;
+            presentInfo.pWaitSemaphores    = &presentSemaphore;
+            presentInfo.waitSemaphoreCount = 1;
+            m_pendingPresentSemaphore      = VK_NULL_HANDLE;
         }
 
         ThrowIfFailedVK(vkQueuePresentKHR(m_presentQueue, &presentInfo));
@@ -273,11 +276,15 @@ public:
 
         for (auto& ff : m_frameFences)
         {
-            vkDestroySemaphore(m_device, ff.imageAcquiredSemaphore, nullptr);
             vkDestroySemaphore(m_device, ff.renderCompleteSemaphore, nullptr);
             vkDestroyFence(m_device, ff.renderCompleteFence, nullptr);
         }
+        for (auto& imgAcqSmph : m_imageAcquiredSemaphores)
+        {
+            vkDestroySemaphore(m_device, imgAcqSmph, nullptr);
+        }
         m_frameFences.clear();
+        m_imageAcquiredSemaphores.clear();
 
         if (m_surface != VK_NULL_HANDLE)
         {
@@ -293,14 +300,14 @@ public:
             }
         }
 
-        for (uint32_t i = 0, numSemaphores = uint32_t(m_queueSemaphores.size()); i < numSemaphores; i++)
+        for (uint32_t i = 0; i < _countof(m_queueSemaphores); i++)
         {
             if (m_queueSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(m_device, m_queueSemaphores[i], nullptr);
             }
+            m_queueSemaphores[i] = VK_NULL_HANDLE;
         }
-        m_queueSemaphores.clear();
 
         for (uint32_t i = 0; i < _countof(m_cmdPools); i++)
         {
@@ -397,14 +404,16 @@ protected:
 
     void WaitForSwapChainBuffer()
     {
-        m_swapChainImageSemaphoreIndex = m_backBufferIndex;
+        m_swapChainImageSemaphoreIndex = (m_swapChainImageSemaphoreIndex + 1) % m_imageAcquiredSemaphores.size();
 
         ThrowIfNotSuccessVK(vkAcquireNextImageKHR(m_device,
                                                   m_swapChain,
                                                   UINT64_MAX,
-                                                  m_frameFences[m_backBufferIndex].imageAcquiredSemaphore,
+                                                  m_imageAcquiredSemaphores[m_swapChainImageSemaphoreIndex],
                                                   VK_NULL_HANDLE,
                                                   &m_backBufferIndex));
+
+        m_pendingAcqImgSempahoreIndex = m_swapChainImageSemaphoreIndex;
 
         if ((m_frameCounter % m_swapChainImages.size()) != m_backBufferIndex)
             m_frameCounter = m_backBufferIndex;
@@ -585,7 +594,10 @@ protected:
         if (RPS_FAILED(result))
             return result;
 
-        ReserveSemaphores(batchLayout.numFenceSignals);
+        uint64_t waitSemaphoreValuesPerQueue[RPS_AFX_QUEUE_INDEX_COUNT] = {};
+        std::copy(std::begin(m_queueSemaphoreValues), std::end(m_queueSemaphoreValues), waitSemaphoreValuesPerQueue);
+
+        m_batchSemaphoreInfos.resize(batchLayout.numFenceSignals);
 
         for (uint32_t iBatch = 0; iBatch < batchLayout.numCmdBatches; iBatch++)
         {
@@ -612,20 +624,35 @@ protected:
 
             EndCmdList(cmdList);
 
+            if (batch.numWaitFences >= RPS_AFX_QUEUE_INDEX_COUNT)
+                return RPS_ERROR_INDEX_OUT_OF_BOUNDS;
+
+            for (uint32_t iWaitIdx = batch.waitFencesBegin; iWaitIdx < (batch.waitFencesBegin + batch.numWaitFences);
+                 iWaitIdx++)
+            {
+                const auto& signalInfo = m_batchSemaphoreInfos[batchLayout.pWaitFenceIndices[iWaitIdx]];
+                waitSemaphoreValuesPerQueue[signalInfo.queueIdx] =
+                    std::max(waitSemaphoreValuesPerQueue[signalInfo.queueIdx], signalInfo.value);
+            }
+
             SubmitCmdLists(&cmdList,
                            1,
                            frameEnd && ((iBatch + 1) == batchLayout.numCmdBatches),
-                           batch.numWaitFences,
-                           batchLayout.pWaitFenceIndices + batch.waitFencesBegin,
-                           batch.signalFenceIndex,
-                           bWaitSwapChain && (iBatch == 0));  // TODO - RPS to mark first access to swapchain image
+                           waitSemaphoreValuesPerQueue,
+                           bWaitSwapChain && (iBatch == 0));
 
             RecycleCmdList(cmdList);
+
+            if (batch.signalFenceIndex != UINT32_MAX)
+            {
+                m_batchSemaphoreInfos[batch.signalFenceIndex] =
+                    QueueSemaphoreSignalInfo{batch.queueIndex, m_queueSemaphoreValues[batch.queueIndex]};
+            }
         }
 
         if (batchLayout.numCmdBatches == 0)
         {
-            SubmitCmdLists(nullptr, 0, true, 0, nullptr, UINT32_MAX, bWaitSwapChain);
+            SubmitCmdLists(nullptr, 0, true, nullptr, bWaitSwapChain);
         }
 
         return RPS_OK;
@@ -707,10 +734,8 @@ protected:
     void SubmitCmdLists(ActiveCommandList* pCmdLists,
                         uint32_t           numCmdLists,
                         bool               frameEnd,
-                        uint32_t           waitSemaphoreCount    = 0,
-                        const uint32_t*    pWaitSemaphoreIndices = nullptr,
-                        uint32_t           signalSemaphoreIndex  = UINT32_MAX,
-                        bool               bWaitSwapChain        = false)
+                        const uint64_t*    pWaitSemaphoreValues = nullptr,
+                        bool               bWaitSwapChain       = false)
     {
         VkCommandBuffer* pCmdBufs = nullptr;
 
@@ -730,50 +755,63 @@ protected:
             }
         }
 
-        VkPipelineStageFlags submitWaitStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-        uint32_t    numWaitSemaphores                  = 0;
-        VkSemaphore waitSemaphores[RPS_MAX_QUEUES + 1] = {};
+        uint32_t             numWaitSemaphores                                  = 0;
+        VkSemaphore          waitSemaphores[RPS_AFX_QUEUE_INDEX_COUNT + 1]      = {};
+        VkPipelineStageFlags submitWaitStages[RPS_AFX_QUEUE_INDEX_COUNT + 1]    = {};
+        uint64_t             waitSemaphoreValues[RPS_AFX_QUEUE_INDEX_COUNT + 1] = {};
 
         // Wait for swapchain if there's a pending signal, and if user asked to wait or at frame end.
-        if ((m_swapChainImageSemaphoreIndex != UINT32_MAX) && (bWaitSwapChain || frameEnd))
+        if ((m_pendingAcqImgSempahoreIndex != UINT32_MAX) && (bWaitSwapChain || frameEnd))
         {
-            waitSemaphores[numWaitSemaphores] = m_frameFences[m_swapChainImageSemaphoreIndex].imageAcquiredSemaphore;
+            submitWaitStages[numWaitSemaphores] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            waitSemaphores[numWaitSemaphores]   = m_imageAcquiredSemaphores[m_pendingAcqImgSempahoreIndex];
             ++numWaitSemaphores;
-            m_swapChainImageSemaphoreIndex = UINT32_MAX;
+            m_pendingAcqImgSempahoreIndex = UINT32_MAX;
         }
 
-        assert(waitSemaphoreCount <= RPS_MAX_QUEUES);
-
-        for (uint32_t i = 0; (i < waitSemaphoreCount) && (i < RPS_MAX_QUEUES); i++)
+        if (pWaitSemaphoreValues)
         {
-            assert(pWaitSemaphoreIndices[i] < m_queueSemaphores.size());
-            waitSemaphores[numWaitSemaphores] = m_queueSemaphores[pWaitSemaphoreIndices[i]];
-            ++numWaitSemaphores;
+            for (uint32_t i = 0; i < RPS_AFX_QUEUE_INDEX_COUNT; i++)
+            {
+                submitWaitStages[numWaitSemaphores]    = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                waitSemaphores[numWaitSemaphores]      = m_queueSemaphores[i];
+                waitSemaphoreValues[numWaitSemaphores] = pWaitSemaphoreValues[i];
+                ++numWaitSemaphores;
+            }
         }
 
         VkFence submitFence = VK_NULL_HANDLE;
 
-        uint32_t    numSignalSemaphores = 0;
-        VkSemaphore signalSemaphores[2] = {};
+        uint32_t    numSignalSemaphores      = 0;
+        VkSemaphore signalSemaphores[2]      = {};
+        uint64_t    signalSemaphoreValues[2] = {};
+
+        if (pCmdLists)
+        {
+            const uint32_t queueIdx = pCmdLists[0].queueIndex;
+
+            m_queueSemaphoreValues[queueIdx]++;
+            signalSemaphores[numSignalSemaphores]      = m_queueSemaphores[queueIdx];
+            signalSemaphoreValues[numSignalSemaphores] = m_queueSemaphoreValues[queueIdx];
+            ++numSignalSemaphores;
+        }
 
         if (frameEnd)
         {
-            if (pCmdLists && (m_presentQueue != m_queues[pCmdLists->queueIndex]))
-            {
-                m_pendingPresentSemaphore             = m_frameFences[m_backBufferIndex].renderCompleteSemaphore;
-                signalSemaphores[numSignalSemaphores] = m_pendingPresentSemaphore;
-                ++numSignalSemaphores;
-            }
+            m_pendingPresentSemaphore                  = m_frameFences[m_backBufferIndex].renderCompleteSemaphore;
+            signalSemaphores[numSignalSemaphores]      = m_pendingPresentSemaphore;
+            signalSemaphoreValues[numSignalSemaphores] = 0;
+            ++numSignalSemaphores;
 
             submitFence = m_frameFences[m_backBufferIndex].renderCompleteFence;
         }
 
-        if (signalSemaphoreIndex != UINT32_MAX)
-        {
-            signalSemaphores[numSignalSemaphores] = m_queueSemaphores[signalSemaphoreIndex];
-            ++numSignalSemaphores;
-        }
+        VkTimelineSemaphoreSubmitInfo timelineSemaphoreInfo = {};
+        timelineSemaphoreInfo.sType                         = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timelineSemaphoreInfo.waitSemaphoreValueCount       = numWaitSemaphores;
+        timelineSemaphoreInfo.pWaitSemaphoreValues          = waitSemaphoreValues;
+        timelineSemaphoreInfo.signalSemaphoreValueCount     = numSignalSemaphores;
+        timelineSemaphoreInfo.pSignalSemaphoreValues        = signalSemaphoreValues;
 
         VkSubmitInfo submitInfo         = {};
         submitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -783,7 +821,8 @@ protected:
         submitInfo.waitSemaphoreCount   = numWaitSemaphores;
         submitInfo.pSignalSemaphores    = signalSemaphores;
         submitInfo.signalSemaphoreCount = numSignalSemaphores;
-        submitInfo.pWaitDstStageMask    = &submitWaitStage;
+        submitInfo.pWaitDstStageMask    = submitWaitStages;
+        submitInfo.pNext                = &timelineSemaphoreInfo;
 
         ThrowIfFailedVK(
             vkQueueSubmit(pCmdLists ? m_queues[pCmdLists->queueIndex] : m_presentQueue, 1, &submitInfo, submitFence));
@@ -1307,17 +1346,15 @@ protected:
         ThrowIfFailedVK(vkCreateImageView(m_device, &view, nullptr, &textureView));
     }
 
-    void ReserveSemaphores(uint32_t numSyncs)
+    void CreateSemaphores()
     {
-        const uint32_t oldSize = uint32_t(m_queueSemaphores.size());
-        if (numSyncs > oldSize)
-        {
-            m_queueSemaphores.resize(numSyncs, VK_NULL_HANDLE);
-        }
+        VkSemaphoreTypeCreateInfo semaphoreTypeCI = {VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        semaphoreTypeCI.semaphoreType             = VK_SEMAPHORE_TYPE_TIMELINE;
 
-        VkSemaphoreCreateInfo semaphoreCI = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        VkSemaphoreCreateInfo     semaphoreCI     = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        semaphoreCI.pNext                         = &semaphoreTypeCI;
 
-        for (size_t i = oldSize; i < numSyncs; i++)
+        for (size_t i = 0; i < _countof(m_queueSemaphores); i++)
         {
             ThrowIfFailedVK(vkCreateSemaphore(m_device, &semaphoreCI, nullptr, &m_queueSemaphores[i]));
         }
@@ -1595,6 +1632,11 @@ private:
 
             vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physDevFeatures2);
 
+            if (physDevVk13Features.dynamicRendering)
+            {
+                findAndAddExt(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+            }
+
             bDynamicRenderingSupported = !!physDevVk13Features.dynamicRendering;
             bStoreOpNoneSupported      = !!physDevVk13Features.dynamicRendering;
 #endif
@@ -1692,6 +1734,7 @@ private:
             queueCI[queueIdx].queueFamilyIndex = m_rpsQueueIndexToVkQueueFamilyMap[queueIdx];
         }
 
+
         VkPhysicalDeviceFeatures physicalDeviceFeatures             = {};
         physicalDeviceFeatures.fillModeNonSolid                     = VK_TRUE;
         physicalDeviceFeatures.pipelineStatisticsQuery              = VK_TRUE;
@@ -1710,6 +1753,7 @@ private:
         VkPhysicalDeviceVulkan12Features vk12Features = {};
         vk12Features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         vk12Features.separateDepthStencilLayouts      = VK_TRUE;
+        vk12Features.timelineSemaphore                = VK_TRUE;
 
 #if defined(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_feature = {};
@@ -1767,6 +1811,8 @@ private:
         dpInfo.poolSizeCount              = (uint32_t)m_defaultFrameDynamicDescriptorPoolSizes.size();
 
         ThrowIfFailedVK(vkCreateDescriptorPool(m_device, &dpInfo, nullptr, &m_descriptorPool));
+
+        CreateSemaphores();
     }
 
     void CreateSwapChain()
@@ -1935,14 +1981,24 @@ private:
 
             VkSemaphoreCreateInfo semaphoreCI = {};
             semaphoreCI.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
             VkFenceCreateInfo fenceCI         = {};
             fenceCI.sType                     = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             fenceCI.flags                     = VK_FENCE_CREATE_SIGNALED_BIT;
 
             for (uint32_t i = oldSize; i < m_frameFences.size(); i++)
             {
-                vkCreateSemaphore(m_device, &semaphoreCI, nullptr, &m_frameFences[i].imageAcquiredSemaphore);
-                vkCreateFence(m_device, &fenceCI, nullptr, &m_frameFences[i].renderCompleteFence);
+                ThrowIfNotSuccessVK(
+                    vkCreateSemaphore(m_device, &semaphoreCI, nullptr, &m_frameFences[i].renderCompleteSemaphore));
+                ThrowIfNotSuccessVK(vkCreateFence(m_device, &fenceCI, nullptr, &m_frameFences[i].renderCompleteFence));
+            }
+
+            oldSize = (uint32_t)m_imageAcquiredSemaphores.size();
+            m_imageAcquiredSemaphores.resize(numImages + 1);
+            
+            for (uint32_t i = oldSize; i < m_imageAcquiredSemaphores.size(); i++)
+            {
+                ThrowIfNotSuccessVK(vkCreateSemaphore(m_device, &semaphoreCI, nullptr, &m_imageAcquiredSemaphores[i]));
             }
         }
 
@@ -2109,17 +2165,18 @@ protected:
     {
         VkFence     renderCompleteFence;
         VkSemaphore renderCompleteSemaphore;
-        VkSemaphore imageAcquiredSemaphore;
     };
 
     std::vector<SwapChainImages>    m_swapChainImages;
     std::vector<RpsRuntimeResource> m_swapChainImageRpsResources;
     std::vector<FrameFences>        m_frameFences;
+    std::vector<VkSemaphore>        m_imageAcquiredSemaphores;
     VkSurfaceKHR                    m_surface                      = VK_NULL_HANDLE;
     VkSurfaceFormatKHR              m_swapChainFormat              = {};
     VkSwapchainKHR                  m_swapChain                    = VK_NULL_HANDLE;
     uint32_t                        m_backBufferIndex              = 0;
-    uint32_t                        m_swapChainImageSemaphoreIndex = UINT32_MAX;
+    uint32_t                        m_swapChainImageSemaphoreIndex = 0;
+    uint32_t                        m_pendingAcqImgSempahoreIndex  = UINT32_MAX;
 
     uint32_t m_frameCounter = 0;
 
@@ -2142,13 +2199,22 @@ protected:
     uint32_t                              m_presentQueueFamilyIndex   = {};
     VkQueue                               m_presentQueue              = VK_NULL_HANDLE;
     VkQueue                               m_queues[RPS_AFX_QUEUE_INDEX_COUNT] = {};
-    std::vector<VkSemaphore>              m_queueSemaphores;
+    VkSemaphore                           m_queueSemaphores[RPS_AFX_QUEUE_INDEX_COUNT] = {};
+    uint64_t                              m_queueSemaphoreValues[RPS_AFX_QUEUE_INDEX_COUNT] = {};
     VkSemaphore                           m_pendingPresentSemaphore = VK_NULL_HANDLE;
     uint32_t                              m_rpsQueueIndexToVkQueueFamilyMap[RPS_AFX_QUEUE_INDEX_COUNT];
     std::vector<std::vector<CommandPool>> m_cmdPools[RPS_AFX_QUEUE_INDEX_COUNT];
     std::mutex                            m_cmdListMutex;
     VkDescriptorPool                      m_descriptorPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer>          m_cmdBufsToSubmit;
+
+    struct QueueSemaphoreSignalInfo
+    {
+        uint32_t queueIdx;
+        uint64_t value;
+    };
+
+    std::vector<QueueSemaphoreSignalInfo> m_batchSemaphoreInfos;
 
     VkBuffer       m_constantBuffer                      = VK_NULL_HANDLE;
     VkDeviceMemory m_constantBufferMemory                = VK_NULL_HANDLE;

@@ -45,6 +45,14 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 class RpslExplorer
 {
+    struct JITModule
+    {
+        std::string  moduleName;
+        std::string  fileName;
+        RpsJITModule hRpslJITModule = RPS_NULL_HANDLE;
+        HMODULE      hRpslDllModule = NULL;
+    };
+
 public:
     RpslExplorer();
 
@@ -133,11 +141,11 @@ private:
         DestroyRpsDevice();
         CreateRpsDevice();
 
-        if (bReloadRenderGraph && (m_currentModule.hRpslJITModule != RPS_NULL_HANDLE) &&
-            (m_entryPointNames.size() > m_selectedEntryPointId) && !m_entryPointNames[m_selectedEntryPointId].empty())
+        if (bReloadRenderGraph &&
+            (m_entryPointNames.size() > m_selectedEntryPointId) &&
+            !m_entryPointNames[m_selectedEntryPointId].empty())
         {
-            TryLoadEntry(
-                m_currentModule.hRpslJITModule, m_currentModule.moduleName, m_entryPointNames[m_selectedEntryPointId]);
+            TryLoadEntry(m_currentModule, m_entryPointNames[m_selectedEntryPointId]);
         }
     }
 
@@ -155,7 +163,7 @@ private:
         // use the contents of szFile to initialize itself.
         ofn.lpstrFile[0]    = '\0';
         ofn.nMaxFile        = sizeof(szFile);
-        ofn.lpstrFilter     = "RPSL File\0*.rpsl\0";
+        ofn.lpstrFilter     = "RPSL/DLL File\0*.rpsl;*.dll\0";
         ofn.nFilterIndex    = 1;
         ofn.lpstrFileTitle  = NULL;
         ofn.nMaxFileTitle   = 0;
@@ -202,66 +210,107 @@ private:
             LogFmt("\nTrying to load RPSL '%s'...", pendingFileName.c_str());
 
             auto rpslFilePath = std::filesystem::path(pendingFileName);
+            auto isDll        = rpslFilePath.extension() == std::filesystem::path(".dll");
             auto moduleName   = rpslFilePath.stem().string();
             auto tmpDir       = rpslFilePath.parent_path() / "tmp";
 
-            std::replace_if(
-                moduleName.begin(),
-                moduleName.end(),
-                [](auto c) { return !(isalpha(c) || isdigit(c) || ('_' == c)); },
-                '_');
+            std::string  newModuleName;
+            RpsJITModule hJITModule = RPS_NULL_HANDLE;
+            HMODULE      hDllModule = NULL;
 
-            std::filesystem::create_directories(tmpDir);
-
-            auto bitCodeFile = tmpDir / (moduleName + ".llvm.bc");
-
-            // TODO: Make dxcompiler.dll to compile RPSL directly
-            // Call rps-hlslc, compile string to bitcode
-
-            if (!std::filesystem::exists(bitCodeFile) ||
-                (std::filesystem::last_write_time(bitCodeFile) < std::filesystem::last_write_time(rpslFilePath)))
+            if (isDll)
             {
-                LogFmt("\nCompiling...");
+                hDllModule = ::LoadLibraryW(rpslFilePath.wstring().c_str());
 
-                auto compilerPath = std::filesystem::path("rps_hlslc/rps-hlslc.exe");
-                compilerPath.make_preferred();
-
-                std::stringstream rpsHlslcCmdLine;
-                rpsHlslcCmdLine << compilerPath << " " << rpslFilePath << " -od " << tmpDir << " -m " << moduleName
-                                << " -O3 -rps-target-dll -rps-bc -cbe=0";
-
-
-                std::string cmdStr = rpsHlslcCmdLine.str();
-
-                if (!LaunchProcess(cmdStr.c_str()))
+                if (hDllModule == nullptr)
                 {
-                    LogFmt("\nFailed to compile RPSL '%s'", cmdStr.c_str());
+                    LogFmt("\nFailed to load DLL '%s'", rpslFilePath.string().c_str());
                     return;
                 }
 
-                LogFmt("OK.");
+                auto entries = GetRpslDllEntries(hDllModule);
+
+                if ((entries.first == nullptr) || (entries.second == 0))
+                {
+                    LogFmt("\nFailed to get entries from DLL '%s'", rpslFilePath.string().c_str());
+                    return;
+                }
+
+                auto pfn_dynLibInit =
+                    reinterpret_cast<PFN_rpslDynLibInit>(GetProcAddress(hDllModule, "___rps_dyn_lib_init"));
+
+                if (pfn_dynLibInit == nullptr)
+                {
+                    LogFmt("\nFailed to get function '___rps_dyn_lib_init' from DLL '%s'",
+                           rpslFilePath.string().c_str());
+                    return;
+                }
+
+                if (RPS_FAILED(rpsRpslDynamicLibraryInit(pfn_dynLibInit)))
+                {
+                    LogFmt("\nFailed to init dyn lib '%s'.", rpslFilePath.string().c_str());
+                    return;
+                }
             }
             else
             {
-                LogFmt("\nFound cached bitcode, skipping compilation.");
+                std::replace_if(
+                    moduleName.begin(),
+                    moduleName.end(),
+                    [](auto c) { return !(isalpha(c) || isdigit(c) || ('_' == c)); },
+                    '_');
+
+                std::filesystem::create_directories(tmpDir);
+
+                auto bitCodeFile = tmpDir / (moduleName + ".llvm.bc");
+
+                // TODO: Make dxcompiler.dll to compile RPSL directly
+                // Call rps-hlslc, compile string to bitcode
+
+                if (!std::filesystem::exists(bitCodeFile) ||
+                    (std::filesystem::last_write_time(bitCodeFile) < std::filesystem::last_write_time(rpslFilePath)))
+                {
+                    LogFmt("\nCompiling...");
+
+                    auto compilerPath = std::filesystem::path("rps_hlslc/rps-hlslc.exe");
+                    compilerPath.make_preferred();
+
+                    std::stringstream rpsHlslcCmdLine;
+                    rpsHlslcCmdLine << compilerPath << " " << rpslFilePath << " -od " << tmpDir << " -m " << moduleName
+                                    << " -O3 -rps-target-dll -rps-bc -cbe=0";
+
+                    std::string cmdStr = rpsHlslcCmdLine.str();
+
+                    if (!LaunchProcess(cmdStr.c_str()))
+                    {
+                        LogFmt("\nFailed to compile RPSL '%s'", cmdStr.c_str());
+                        return;
+                    }
+
+                    LogFmt("OK.");
+                }
+                else
+                {
+                    LogFmt("\nFound cached bitcode, skipping compilation.");
+                }
+
+                LogFmt("\nLoading JIT module...");
+
+                int64_t jitTime = 0;
+                hJITModule = m_JITHelper.LoadBitcode(bitCodeFile.string().c_str(), &jitTime);
+
+                LogFmt("(%.3f ms)", jitTime / 1000.0f);
+
+                const char* const* entryNames = m_JITHelper.GetEntryNameTable(hJITModule);
+                if ((entryNames == nullptr) || (entryNames[0] == nullptr))
+                {
+                    m_JITHelper.pfnRpsJITUnload(hJITModule);
+                    return;
+                }
+
+                newModuleName = m_JITHelper.GetModuleName(hJITModule);
+                assert(newModuleName == moduleName);
             }
-
-            LogFmt("\nLoading JIT module...");
-
-            int64_t      jitTime    = 0;
-            RpsJITModule hJITModule = m_JITHelper.LoadBitcode(bitCodeFile.string().c_str(), &jitTime);
-
-            LogFmt("(%.3f ms)", jitTime / 1000.0f);
-
-            const char* const* entryNames = m_JITHelper.GetEntryNameTable(hJITModule);
-            if ((entryNames == nullptr) || (entryNames[0] == nullptr))
-            {
-                m_JITHelper.pfnRpsJITUnload(hJITModule);
-                return;
-            }
-
-            std::string newModuleName = m_JITHelper.GetModuleName(hJITModule);
-            assert(newModuleName == moduleName);
 
             do
             {
@@ -269,6 +318,7 @@ private:
 
                 m_pendingModule.fileName       = pendingFileName;
                 m_pendingModule.hRpslJITModule = hJITModule;
+                m_pendingModule.hRpslDllModule = hDllModule;
                 m_pendingModule.moduleName     = newModuleName;
 
             } while (false);
@@ -277,10 +327,29 @@ private:
         });
     }
 
+    static std::pair<char const* const*, uint32_t> GetRpslDllEntries(HMODULE hDllModule)
+    {
+        using PFN_RpsDynLibEntries = const char* const* (*)(uint32_t* pNumEntries);
+
+        const auto pfnRpsDynLibEntries =
+            reinterpret_cast<PFN_RpsDynLibEntries>(::GetProcAddress(hDllModule, "___rps_dyn_lib_entries"));
+
+        if (pfnRpsDynLibEntries == nullptr)
+        {
+            return {};
+        }
+
+        uint32_t   numEntries = 0;
+        const auto ppEntries  = pfnRpsDynLibEntries(&numEntries);
+
+        return std::make_pair(ppEntries, numEntries);
+    }
+
     void HandleModuleUpdate()
     {
-        uint32_t selectedEntryPoint = 0;
-        uint32_t numEntryPoints     = 0;
+        uint32_t           selectedEntryPoint = 0;
+        uint32_t           numEntryPoints     = 0;
+        const char* const* entryNames         = nullptr;
 
         JITModule pendingModule;
         do
@@ -289,12 +358,24 @@ private:
             pendingModule = std::move(m_pendingModule);
         } while (false);
 
-        const char* const* entryNames = m_JITHelper.GetEntryNameTable(pendingModule.hRpslJITModule);
-
         auto prevEntryName =
             (m_entryPointNames.size() > m_selectedEntryPointId) ? m_entryPointNames[m_selectedEntryPointId] : "";
 
-        while (entryNames[numEntryPoints])
+        uint32_t maxEntryPoints = UINT32_MAX;
+
+        if (pendingModule.hRpslDllModule != NULL)
+        {
+            auto entries = GetRpslDllEntries(pendingModule.hRpslDllModule);
+
+            entryNames     = entries.first;
+            maxEntryPoints = entries.second;
+        }
+        else
+        {
+            entryNames = m_JITHelper.GetEntryNameTable(pendingModule.hRpslJITModule);
+        }
+
+        while ((numEntryPoints < maxEntryPoints) && entryNames[numEntryPoints])
         {
             if (!prevEntryName.empty() && (prevEntryName == entryNames[numEntryPoints]))
             {
@@ -310,8 +391,7 @@ private:
         {
             LogFmt("\nTry loading entry point %d '%s'...", selectedEntryPoint, entryNames[selectedEntryPoint]);
 
-            RpsRenderGraph hRenderGraph =
-                TryLoadEntry(pendingModule.hRpslJITModule, pendingModule.moduleName, entryNames[selectedEntryPoint]);
+            RpsRenderGraph hRenderGraph = TryLoadEntry(pendingModule, entryNames[selectedEntryPoint]);
 
             if (hRenderGraph != RPS_NULL_HANDLE)
             {
@@ -334,11 +414,29 @@ private:
         }
     }
 
-    RpsRenderGraph TryLoadEntry(RpsJITModule hJITModule, const std::string& moduleName, const std::string& entryName)
+    RpsRenderGraph TryLoadEntry(const RpslExplorer::JITModule& jitModule, const std::string& entryName)
     {
-        char         nameBuf[256];
-        RpsRpslEntry hEntry = m_JITHelper.GetEntryPoint(
-            hJITModule, rpsMakeRpslEntryName(nameBuf, std::size(nameBuf), moduleName.c_str(), entryName.c_str()));
+        char nameBuf[256];
+
+        RpsRpslEntry hEntry = RPS_NULL_HANDLE;
+
+        if (jitModule.hRpslJITModule != RPS_NULL_HANDLE)
+        {
+            hEntry = m_JITHelper.GetEntryPoint(
+                jitModule.hRpslJITModule,
+                rpsMakeRpslEntryName(nameBuf, std::size(nameBuf), jitModule.moduleName.c_str(), entryName.c_str()));
+        }
+        else if (jitModule.hRpslDllModule != NULL)
+        {
+            auto pEntry = reinterpret_cast<RpsRpslEntry*>(::GetProcAddress(jitModule.hRpslDllModule, entryName.c_str()));
+            hEntry = pEntry ? *pEntry : RPS_NULL_HANDLE;
+        }
+
+        if (hEntry == RPS_NULL_HANDLE)
+        {
+            LogFmt("Failed to load RPSL entry '%s'.", entryName.c_str());
+            return RPS_NULL_HANDLE;
+        }
 
         RpsRenderGraph           hRenderGraph                     = {};
         RpsRenderGraphCreateInfo renderGraphCreateInfo            = {};
@@ -482,13 +580,6 @@ private:
 
     RpsDevice       m_hRpsDevice = RPS_NULL_HANDLE;
     RpsAfxJITHelper m_JITHelper;
-
-    struct JITModule
-    {
-        std::string  moduleName;
-        std::string  fileName;
-        RpsJITModule hRpslJITModule = RPS_NULL_HANDLE;
-    };
 
     std::string m_pendingFileName;
     JITModule   m_pendingModule;

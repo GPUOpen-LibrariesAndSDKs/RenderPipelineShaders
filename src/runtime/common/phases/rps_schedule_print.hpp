@@ -90,7 +90,7 @@ namespace rps
                     printer(" ]");
                 }
 
-                for (uint32_t iCmd = batchInfo.waitFencesBegin, cmdEnd = batchInfo.waitFencesBegin + batchInfo.numCmds;
+                for (uint32_t iCmd = batchInfo.cmdBegin, cmdEnd = batchInfo.cmdBegin + batchInfo.numCmds;
                      iCmd < cmdEnd;
                      iCmd++)
                 {

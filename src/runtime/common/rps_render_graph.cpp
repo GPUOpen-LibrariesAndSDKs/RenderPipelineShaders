@@ -34,10 +34,9 @@ namespace rps
 
         if (pCreateInfo)
         {
-            (*ppRenderGraph)->OnInit(renderGraphCreateInfo);
+            RPS_V_RETURN((*ppRenderGraph)->OnInit(renderGraphCreateInfo));
         }
 
-        
         if (pRuntimeDevice)
         {
             if ((*ppRenderGraph)->m_createInfo.numPhases == 0)
@@ -483,6 +482,17 @@ RpsResult rpsCmdGetNodeName(const RpsCmdCallbackContext* pContext, const char** 
     {
         *pNodeNameLength = nodeDecl.name.len;
     }
+
+    return RPS_OK;
+}
+
+RpsResult rpsCmdGetNodeDeclIndex(const RpsCmdCallbackContext* pContext, uint32_t* pNodeDeclIndex)
+{
+    RPS_CHECK_ARGS(pContext && pNodeDeclIndex);
+
+    auto pBackendContext = rps::RuntimeCmdCallbackContext::Get(pContext);
+
+    *pNodeDeclIndex = pBackendContext->pCmdInfo->nodeDeclIndex;
 
     return RPS_OK;
 }

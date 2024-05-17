@@ -61,7 +61,7 @@ namespace rps
 
             const bool bIsCreated = resInstance.hRuntimeResource && !resInstance.isPendingCreate;
 
-            if (!resInstance.isExternal && bIsCreated)
+            if (!resInstance.isExternal && bIsCreated && resInstance.isAccessed)
             {
                 resInstance.prevFinalAccess = (bResetAliasedResourceToNoAccess && resInstance.isAliased)
                                                   ? AccessAttr{}
